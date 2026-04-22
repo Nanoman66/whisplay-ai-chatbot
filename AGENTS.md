@@ -6,6 +6,16 @@
 
 Whisplay AI Chatbot is a pocket-sized AI chatbot device built for Raspberry Pi Zero 2W / Pi 5. It features voice interaction (press button, speak, get spoken responses), an LCD display with emoji/status visualization, RGB LED indicators, and extensible AI backend support.
 
+## Meshtastic Mode
+
+This fork may include a Meshtastic communicator mode for Raspberry Pi based builds.
+
+Design intent:
+- `meshtasticd` remains a separate local system service and owns the radio hardware
+- the Whisplay application acts as the user interface and interaction layer
+- Meshtastic integration should be isolated in `src/meshtastic/`
+- avoid coupling Meshtastic radio control directly into the existing generic AI provider stack unless there is a clear architectural reason
+
 **Key Capabilities:**
 - Multi-provider ASR (Automatic Speech Recognition): Tencent, Volcengine, OpenAI, Gemini, Whisper, Vosk, local models
 - Multi-provider LLM: OpenAI, Gemini, Claude, Ollama, Qwen, Volcengine Doubao, and more
