@@ -1,49 +1,58 @@
 import fs from "fs";
+import path from "path";
 import { spawn } from "child_process";
 import { ASRServer } from "../../type";
 
 const modelPath = process.env.VOSK_MODEL_PATH || "";
 const asrServer = (process.env.ASR_SERVER || "").toLowerCase() as ASRServer;
+const helperPath = path.resolve(__dirname, "../../../python/vosk_transcriber.py");
 
 let isVoskInstall = false;
+
 export const checkVoskInstallation = (): boolean => {
-  // check if vosk-transcriber command is available
-  try {
-    spawn("vosk-transcriber", ["--help"]);
-  } catch (err) {
-    console.error(
-      "vosk-transcriber command is not available. Please install Vosk and ensure vosk-transcriber is in your PATH."
-    );
+  if (!fs.existsSync(helperPath)) {
+    console.error("Vosk helper script is missing:", helperPath);
     return false;
   }
+
+  if (!modelPath) {
+    console.error("VOSK_MODEL_PATH is not set.");
+    return false;
+  }
+
+  if (!fs.existsSync(modelPath)) {
+    console.error("Vosk model path does not exist:", modelPath);
+    return false;
+  }
+
   isVoskInstall = true;
   return true;
 };
 
 if (asrServer === ASRServer.vosk) {
-  checkVoskInstallation();
+  isVoskInstall = checkVoskInstallation();
 }
 
 export const recognizeAudio = async (
   audioFilePath: string
 ): Promise<string> => {
-  if (!isVoskInstall) {
-    console.error("Vosk is not installed.");
+  if (!isVoskInstall && !checkVoskInstallation()) {
     return "";
   }
-  if (!modelPath) {
-    console.error("VOSK_MODEL_PATH is not set.");
-    return "";
-  }
+
   if (!fs.existsSync(audioFilePath)) {
     console.error("Audio file does not exist:", audioFilePath);
     return "";
   }
 
-  const cmd = "vosk-transcriber";
-
   return await new Promise<string>((resolve) => {
-    const child = spawn(cmd, ["--model", modelPath, "--input", audioFilePath]);
+    const child = spawn("python3", [
+      helperPath,
+      "--model",
+      modelPath,
+      "--input",
+      audioFilePath,
+    ]);
 
     let stdout = "";
     let stderr = "";
@@ -59,22 +68,23 @@ export const recognizeAudio = async (
     });
 
     child.on("error", (err) => {
-      console.error("Failed to start vosk-transcriber:", err?.message ?? err);
+      console.error("Failed to start Vosk helper:", err?.message ?? err);
       resolve("");
     });
 
     child.on("close", (code, signal) => {
       if (stderr && stderr.trim()) {
-        // 有些 CLI 会把警告输出到 stderr，但仍然返回有效的 stdout
-        console.error("vosk-transcriber stderr:", stderr.trim());
+        console.error("vosk helper stderr:", stderr.trim());
       }
+
       if (code !== 0) {
         console.error(
-          `vosk-transcriber exited with code ${code}${
+          `vosk helper exited with code ${code}${
             signal ? ` (signal ${signal})` : ""
           }`
         );
       }
+
       resolve(stdout ? stdout.trim() : "");
     });
   });

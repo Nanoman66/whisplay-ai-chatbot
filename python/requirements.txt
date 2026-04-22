@@ -5,3 +5,4 @@ spidev
 opencv-python-headless
 Flask
 meshtastic
+vosk
