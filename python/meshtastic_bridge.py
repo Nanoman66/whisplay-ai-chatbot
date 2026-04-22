@@ -109,12 +109,16 @@ class BridgeHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            iface.sendText(
-                text=text,
-                destinationId=destination_id,
-                wantAck=want_ack,
-                channelIndex=channel_index,
-            )
+            send_kwargs = {
+                "text": text,
+                "wantAck": want_ack,
+                "channelIndex": channel_index,
+            }
+
+            if destination_id:
+                send_kwargs["destinationId"] = destination_id
+
+            iface.sendText(**send_kwargs)
             self._send_json(200, {"ok": True})
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": str(exc)})
