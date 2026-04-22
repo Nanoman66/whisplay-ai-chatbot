@@ -2,6 +2,7 @@ export type MeshtasticConfig = {
   enabled: boolean;
   host: string;
   port: number;
+  bridgePort: number;
   channelIndex: number;
   pollIntervalMs: number;
   receiveEnabled: boolean;
@@ -23,6 +24,7 @@ export type MeshTextMessage = {
   receivedAt?: number;
   rxRssi?: number;
   rxSnr?: number;
+  rxTime?: number;
 };
 
 export type MeshSendResult = {

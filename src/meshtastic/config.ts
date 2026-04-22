@@ -14,6 +14,7 @@ export const meshtasticConfig: MeshtasticConfig = {
   enabled: parseBoolean(process.env.MESHTASTIC_ENABLED, false),
   host: process.env.MESHTASTIC_HOST || "127.0.0.1",
   port: parseNumber(process.env.MESHTASTIC_PORT, 4403),
+  bridgePort: parseNumber(process.env.MESHTASTIC_BRIDGE_PORT, 4410),
   channelIndex: parseNumber(process.env.MESHTASTIC_CHANNEL_INDEX, 0),
   pollIntervalMs: parseNumber(process.env.MESHTASTIC_POLL_INTERVAL_MS, 1000),
   receiveEnabled: parseBoolean(process.env.MESHTASTIC_RECEIVE_ENABLED, true),
