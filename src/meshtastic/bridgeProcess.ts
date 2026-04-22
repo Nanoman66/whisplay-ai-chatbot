@@ -11,9 +11,12 @@ export class MeshtasticBridgeProcess {
 
     const scriptPath = path.resolve(__dirname, "../../python/meshtastic_bridge.py");
 
-    this.process = spawn("python3", [scriptPath], {
+    this.process = spawn("python3", ["-u", scriptPath], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: "1",
+      },
     });
 
     this.process.stdout?.on("data", (data) => {

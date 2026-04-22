@@ -21,14 +21,31 @@ export class MeshtasticService {
   async start(): Promise<void> {
     this.bridgeProcess.start();
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
     this.client.onMessage((message) => {
       this.incomingQueue.push(message);
       this.incomingHandler?.(message);
     });
 
-    await this.client.connect();
+    const maxAttempts = 10;
+    const delayMs = 1000;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.client.connect();
+        console.log(`[Meshtastic] client connected on attempt ${attempt}.`);
+        return;
+      } catch (error) {
+        lastError = error;
+        console.warn(
+          `[Meshtastic] connect attempt ${attempt}/${maxAttempts} failed.`,
+          error,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    throw lastError ?? new Error("Meshtastic bridge failed to start.");
   }
 
   async stop(): Promise<void> {
