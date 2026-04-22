@@ -15,6 +15,8 @@ import { WhisplayIMBridgeServer } from "../device/im-bridge";
 import { FlowStateMachine } from "./chat-flow/stateMachine";
 import { flowStates } from "./chat-flow/states";
 import { ChatFlowContext, FlowName } from "./chat-flow/types";
+import { MeshtasticService } from "../meshtastic";
+import type { MeshTextMessage } from "../meshtastic";
 import { playWakeupChime } from "../device/audio";
 import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
@@ -55,6 +57,11 @@ class ChatFlow implements ChatFlowContext {
   isFromWakeListening: boolean = false;
   enterMusicAfterAnswer: boolean = false;
   musicDisplayText: string = "";
+    appMode: "chatbot" | "meshtastic" =
+    (process.env.APP_MODE || "chatbot").toLowerCase() === "meshtastic"
+      ? "meshtastic"
+      : "chatbot";
+  meshtasticService: MeshtasticService | null = null;
 
   constructor(options: { enableCamera?: boolean } = {}) {
     console.log(`[${getCurrentTimeTag()}] ChatBot started.`);
@@ -103,6 +110,13 @@ class ChatFlow implements ChatFlowContext {
     }
 
     this.transitionTo("sleep");
+	
+	if (this.appMode === "meshtastic") {
+      this.meshtasticService = new MeshtasticService();
+      this.meshtasticService.onIncomingMessage(this.handleIncomingMeshtasticMessage);
+      this.attachMeshtasticCleanup();
+      void this.startMeshtasticMode();
+    }
 
     const wakeEnabled = (process.env.WAKE_WORD_ENABLED || "").toLowerCase();
     if (wakeEnabled === "true") {
@@ -177,6 +191,34 @@ class ChatFlow implements ChatFlowContext {
       this.whisplayIMBridge.start();
     }
   }
+
+  private startMeshtasticMode = async (): Promise<void> => {
+    if (!this.meshtasticService) {
+      return;
+    }
+
+    try {
+      await this.meshtasticService.start();
+      console.log("[Meshtastic] service started.");
+    } catch (error) {
+      console.error("[Meshtastic] failed to start service:", error);
+    }
+  };
+
+  private handleIncomingMeshtasticMessage = (message: MeshTextMessage): void => {
+    console.log("[Meshtastic] incoming message:", message);
+  };
+
+  private attachMeshtasticCleanup = (): void => {
+    const cleanup = () => {
+      if (this.meshtasticService) {
+        void this.meshtasticService.stop();
+      }
+    };
+
+    process.on("exit", cleanup);
+  };
+
 
   async recognizeAudio(path: string, isFromAutoListening?: boolean): Promise<string> {
     if (!isFromAutoListening && (await getRecordFileDurationMs(path)) < 500) {
