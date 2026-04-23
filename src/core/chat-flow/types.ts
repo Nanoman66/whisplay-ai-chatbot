@@ -9,11 +9,18 @@ export type FlowName =
   | "wake_listening"
   | "asr"
   | "review_outgoing"
+  | "incoming_message"
   | "answer"
   | "image"
   | "external_answer";
 
 export type FlowStateHandler = (ctx: ChatFlowContext) => void;
+
+export interface IncomingDisplayMessage {
+  fromDisplay: string;
+  receivedAtDisplay: string;
+  text: string;
+}
 
 export interface ChatFlowContext {
   currentFlowName: FlowName;
@@ -42,6 +49,8 @@ export interface ChatFlowContext {
   musicDisplayText: string;
   appMode: "chatbot" | "meshtastic";
   meshtasticService: MeshtasticService | null;
+  incomingMessageQueue: IncomingDisplayMessage[];
+  currentIncomingMessage: IncomingDisplayMessage | null;
 
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;

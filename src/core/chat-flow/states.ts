@@ -70,6 +70,17 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         ctx.transitionTo("camera");
       });
     }
+	
+	if (
+      ctx.appMode === "meshtastic" &&
+      !ctx.currentIncomingMessage &&
+      ctx.incomingMessageQueue.length > 0
+    ) {
+      ctx.currentIncomingMessage = ctx.incomingMessageQueue.shift() || null;
+      ctx.transitionTo("incoming_message");
+      return;
+    }
+	
     display({
       status: "idle",
       emoji: "😴",
@@ -409,6 +420,45 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     rag_icon_visible: false,
   });
 }, 
+
+  incoming_message: (ctx: ChatFlowContext) => {
+    if (!ctx.currentIncomingMessage) {
+      if (ctx.incomingMessageQueue.length > 0) {
+        ctx.currentIncomingMessage = ctx.incomingMessageQueue.shift() || null;
+      }
+    }
+
+    if (!ctx.currentIncomingMessage) {
+      ctx.transitionTo("sleep");
+      return;
+    }
+
+    const dismissCurrentMessage = () => {
+      ctx.currentIncomingMessage = null;
+
+      if (ctx.incomingMessageQueue.length > 0) {
+        ctx.currentIncomingMessage = ctx.incomingMessageQueue.shift() || null;
+        ctx.transitionTo("incoming_message");
+      } else {
+        ctx.transitionTo("sleep");
+      }
+    };
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+    onButtonReleased(() => {
+      dismissCurrentMessage();
+    });
+
+    display({
+      status: "incoming",
+      emoji: "📨",
+      RGB: "#0088ff",
+      rag_icon_visible: false,
+      text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.receivedAtDisplay}\n${ctx.currentIncomingMessage.text}`,
+    });
+  },
+
   answer: (ctx: ChatFlowContext) => {
     ctx.enterMusicAfterAnswer = false;
     ctx.musicDisplayText = "";

@@ -14,7 +14,7 @@ import { WakeWordListener } from "../device/wakeword";
 import { WhisplayIMBridgeServer } from "../device/im-bridge";
 import { FlowStateMachine } from "./chat-flow/stateMachine";
 import { flowStates } from "./chat-flow/states";
-import { ChatFlowContext, FlowName } from "./chat-flow/types";
+import { ChatFlowContext, FlowName, IncomingDisplayMessage } from "./chat-flow/types";
 import { MeshtasticService } from "../meshtastic";
 import type { MeshTextMessage } from "../meshtastic";
 import { playWakeupChime } from "../device/audio";
@@ -57,6 +57,8 @@ class ChatFlow implements ChatFlowContext {
   isFromWakeListening: boolean = false;
   enterMusicAfterAnswer: boolean = false;
   musicDisplayText: string = "";
+  incomingMessageQueue: IncomingDisplayMessage[] = [];
+  currentIncomingMessage: IncomingDisplayMessage | null = null;
     appMode: "chatbot" | "meshtastic" =
     (process.env.APP_MODE || "chatbot").toLowerCase() === "meshtastic"
       ? "meshtastic"
@@ -205,8 +207,46 @@ class ChatFlow implements ChatFlowContext {
     }
   };
 
+  private formatIncomingTimestamp = (date: Date): string => {
+    const timeText = date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const year = date.getFullYear();
+
+    return `${timeText} ${month}/${day}/${year}`;
+  };
+
+  private showNextIncomingMessage = (): void => {
+    if (this.currentIncomingMessage || this.incomingMessageQueue.length === 0) {
+      return;
+    }
+
+    this.currentIncomingMessage = this.incomingMessageQueue.shift() || null;
+
+    if (this.currentIncomingMessage && this.currentFlowName === "sleep") {
+      this.transitionTo("incoming_message");
+    }
+  };
+
   private handleIncomingMeshtasticMessage = (message: MeshTextMessage): void => {
     console.log("[Meshtastic] incoming message:", message);
+
+    const displayMessage: IncomingDisplayMessage = {
+      fromDisplay: message.from && message.from.trim() ? message.from : "Unknown",
+      receivedAtDisplay: this.formatIncomingTimestamp(new Date()),
+      text: message.text?.trim() || "",
+    };
+
+    this.incomingMessageQueue.push(displayMessage);
+
+    if (this.currentFlowName === "sleep" && !this.currentIncomingMessage) {
+      this.showNextIncomingMessage();
+    }
   };
 
   private attachMeshtasticCleanup = (): void => {
