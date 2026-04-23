@@ -158,7 +158,8 @@ const recordAudio = async (
 
   return new Promise((resolve, reject) => {
     const args = [
-      "-t",
+      "-q",
+	  "-t",
       "alsa",
       "default",
       "-t",
@@ -226,7 +227,8 @@ const recordAudioManually = (
   const result = new Promise<string>((resolve, reject) => {
     currentRecordingReject = reject;
     const recordingProcess = spawn("sox", [
-      "-t",
+      "-q",
+	  "-t",
       "alsa",
       "default",
       "-t",

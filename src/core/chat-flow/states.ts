@@ -51,11 +51,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(noop);
     onCameraModeExit(null);
     onTextInput((text: string) => {
-      if (ctx.currentFlowName !== "sleep") return;
+	  if (ctx.currentFlowName !== "sleep") return;
       ctx.answerId += 1;
       ctx.asrText = text;
       display({ status: "recognizing", text, text_input_enabled: false });
-      ctx.transitionTo("answer");
+      if (ctx.appMode === "meshtastic") {
+        ctx.transitionTo("review_outgoing");
+      } else {
+        ctx.transitionTo("answer");
+      }
     });
     if (ctx.enableCamera) {
       const captureImgPath = `${cameraDir}/capture-${moment().format(
@@ -258,14 +262,18 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       }
       if (result) {
         console.log("Audio recognized result:", result);
-        ctx.asrText = result;
-        ctx.endAfterAnswer = ctx.shouldEndAfterAnswer(result);
-        if (ctx.wakeSessionActive) {
-          ctx.wakeSessionLastSpeechAt = Date.now();
-        }
-        display({ status: "recognizing", text: result });
-        ctx.transitionTo("answer");
-        return;
+		ctx.asrText = result;
+		ctx.endAfterAnswer = ctx.shouldEndAfterAnswer(result);
+		if (ctx.wakeSessionActive) {
+		  ctx.wakeSessionLastSpeechAt = Date.now();
+		}
+		display({ status: "recognizing", text: result });
+		if (ctx.appMode === "meshtastic") {
+		  ctx.transitionTo("review_outgoing");
+		} else {
+		  ctx.transitionTo("answer");
+		}
+		return;
       }
       if (ctx.wakeSessionActive) {
         if (ctx.shouldContinueWakeSession()) {
@@ -279,6 +287,128 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       ctx.transitionTo("sleep");
     });
   },
+ review_outgoing: (ctx: ChatFlowContext) => {
+  let longPressTimer: NodeJS.Timeout | null = null;
+  let longPressHandled = false;
+  let tapCount = 0;
+  let tapTimer: NodeJS.Timeout | null = null;
+  let isSending = false;
+
+  const resetTapState = () => {
+    tapCount = 0;
+    if (tapTimer) {
+      clearTimeout(tapTimer);
+      tapTimer = null;
+    }
+  };
+
+  const discardAndReturnToSleep = () => {
+    resetTapState();
+    ctx.asrText = "";
+    display({
+      status: "idle",
+      emoji: "😴",
+      RGB: "#000055",
+      text: "Message discarded.",
+    });
+    setTimeout(() => {
+      if (ctx.currentFlowName === "review_outgoing") {
+        ctx.transitionTo("sleep");
+      }
+    }, 800);
+  };
+
+  const sendMessage = async () => {
+    if (isSending) return;
+    isSending = true;
+    resetTapState();
+
+    display({
+      status: "sending",
+      emoji: "📡",
+      RGB: "#00c8a3",
+      text: "Sending...",
+    });
+
+    if (!ctx.meshtasticService) {
+      display({
+        status: "error",
+        emoji: "⚠️",
+        RGB: "#ff0000",
+        text: "Meshtastic service unavailable.",
+      });
+      setTimeout(() => ctx.transitionTo("sleep"), 1500);
+      return;
+    }
+
+    const result = await ctx.meshtasticService.sendText(ctx.asrText);
+
+    if (result.ok) {
+      display({
+        status: "sent",
+        emoji: "✅",
+        RGB: "#00aa55",
+        text: "Message sent.",
+      });
+    } else {
+      display({
+        status: "error",
+        emoji: "⚠️",
+        RGB: "#ff0000",
+        text: result.error || "Send failed.",
+      });
+    }
+
+    setTimeout(() => {
+      ctx.transitionTo("sleep");
+    }, 1500);
+  };
+
+  onButtonDoubleClick(null);
+
+  onButtonPressed(() => {
+    if (isSending) return;
+    longPressHandled = false;
+    longPressTimer = setTimeout(() => {
+      longPressHandled = true;
+      discardAndReturnToSleep();
+    }, 1200);
+  });
+
+  onButtonReleased(() => {
+    if (isSending) return;
+
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+
+    if (longPressHandled) {
+      return;
+    }
+
+    tapCount += 1;
+
+    if (tapCount === 1) {
+      tapTimer = setTimeout(() => {
+        resetTapState();
+      }, 700);
+      return;
+    }
+
+    if (tapCount === 2) {
+      void sendMessage();
+    }
+  });
+
+  display({
+    status: "review",
+    emoji: "📝",
+    RGB: "#ffaa00",
+    text: ctx.asrText,
+    rag_icon_visible: false,
+  });
+}, 
   answer: (ctx: ChatFlowContext) => {
     ctx.enterMusicAfterAnswer = false;
     ctx.musicDisplayText = "";

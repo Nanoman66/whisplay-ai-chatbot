@@ -1,4 +1,5 @@
 import { StreamResponser } from "../StreamResponsor";
+import type { MeshtasticService } from "../../meshtastic";
 
 export type FlowName =
   | "sleep"
@@ -7,6 +8,7 @@ export type FlowName =
   | "listening"
   | "wake_listening"
   | "asr"
+  | "review_outgoing"
   | "answer"
   | "image"
   | "external_answer";
@@ -38,6 +40,8 @@ export interface ChatFlowContext {
   isFromWakeListening: boolean;
   enterMusicAfterAnswer: boolean;
   musicDisplayText: string;
+  appMode: "chatbot" | "meshtastic";
+  meshtasticService: MeshtasticService | null;
 
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
