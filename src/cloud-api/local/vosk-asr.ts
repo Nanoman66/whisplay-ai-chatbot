@@ -197,7 +197,3 @@ export const recognizeAudio = async (
     return "";
   }
 };
-
-export const ensureVoskReady = async (): Promise<void> => {
-  await ensureHelperStarted();
-};

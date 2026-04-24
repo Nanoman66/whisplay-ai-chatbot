@@ -4,8 +4,7 @@ import {
   splitSentences,
 } from "./../utils/index";
 import { display } from "../device/display";
-import { recognizeAudio, ttsProcessor, asrServer } from "../cloud-api/server";
-import { ensureVoskReady } from "../cloud-api/local/vosk-asr";
+import { recognizeAudio, ttsProcessor } from "../cloud-api/server";
 import { isImMode } from "../cloud-api/llm";
 import { DEFAULT_EMOJI, extractEmojis } from "../utils";
 import { StreamResponser } from "./StreamResponsor";
@@ -112,22 +111,14 @@ class ChatFlow implements ChatFlowContext {
       this.enableCamera = true;
     }
 
-        display({
-      status: "starting",
-      emoji: "⏳",
-      RGB: "#444444",
-      text: "Starting services...",
-      rag_icon_visible: false,
-    });
-
-    if (this.appMode === "meshtastic") {
+    this.transitionTo("sleep");
+	
+	if (this.appMode === "meshtastic") {
       this.meshtasticService = new MeshtasticService();
       this.meshtasticService.onIncomingMessage(this.handleIncomingMeshtasticMessage);
       this.attachMeshtasticCleanup();
       void this.startMeshtasticMode();
     }
-
-    void this.finishStartup();
 
     const wakeEnabled = (process.env.WAKE_WORD_ENABLED || "").toLowerCase();
     if (wakeEnabled === "true") {
@@ -202,19 +193,6 @@ class ChatFlow implements ChatFlowContext {
       this.whisplayIMBridge.start();
     }
   }
-
-  private finishStartup = async (): Promise<void> => {
-    if (asrServer === "vosk") {
-      try {
-        await ensureVoskReady();
-        console.log("[Vosk] helper ready.");
-      } catch (error) {
-        console.error("[Vosk] helper failed to become ready:", error);
-      }
-    }
-
-    this.transitionTo("sleep");
-  };
 
   private startMeshtasticMode = async (): Promise<void> => {
     if (!this.meshtasticService) {

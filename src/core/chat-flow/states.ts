@@ -61,17 +61,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         ctx.transitionTo("answer");
       }
     });
-    onButtonDoubleClick(null);
-
-	if (ctx.enableCamera && ctx.appMode !== "meshtastic") {
-	  const captureImgPath = `${cameraDir}/capture-${moment().format(
-		"YYYYMMDD-HHmmss",
-	  )}.jpg`;
+    if (ctx.enableCamera) {
+      const captureImgPath = `${cameraDir}/capture-${moment().format(
+        "YYYYMMDD-HHmmss",
+      )}.jpg`;
       onButtonDoubleClick(() => {
-		enterCameraMode(captureImgPath);
-		ctx.transitionTo("camera");
-	  });
-	}
+        enterCameraMode(captureImgPath);
+        ctx.transitionTo("camera");
+      });
+    }
 	
 	if (
       ctx.appMode === "meshtastic" &&
