@@ -416,6 +416,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     status: "review",
     emoji: "📝",
     RGB: "#ffaa00",
+    header_text: "Review message",
+    header_color: "#00c8a3",
+    body_text: ctx.asrText,
+    body_color: "#FFFFFF",
     text: ctx.asrText,
     rag_icon_visible: false,
   });
@@ -455,6 +459,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       emoji: "📨",
       RGB: "#0088ff",
       rag_icon_visible: false,
+      header_text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.receivedAtDisplay}`,
+      header_color: "#ff5555",
+      body_text: ctx.currentIncomingMessage.text,
+      body_color: "#FFFFFF",
       text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.receivedAtDisplay}\n${ctx.currentIncomingMessage.text}`,
     });
   },

@@ -28,11 +28,18 @@ scroll_stop_event = threading.Event()
 status_font_size=20
 emoji_font_size=40
 battery_font_size=13
+message_header_font_size=16
+message_body_font_size=20
+message_header_min_font_size=12
 
 # Global variables
 current_status = "Hello"
 current_emoji = "😄"
 current_text = "Waiting for message..."
+current_header_text = ""
+current_header_color = (170, 170, 170, 255)
+current_body_text = ""
+current_body_color = (255, 255, 255, 255)
 current_battery_level = 100
 current_battery_color = ColorUtils.get_rgb255_from_any("#55FF00")
 current_scroll_top = 0
@@ -194,21 +201,55 @@ class RenderThread(threading.Thread):
         global current_scroll_top, current_scroll_sync_char_end
         global current_scroll_sync_duration_ms, current_scroll_sync_target_top
         global current_scroll_sync_speed, current_scroll_sync_hold_until
-        """Render main text content, wrap lines according to screen width, only display currently visible part"""
-        if not text:
+        global current_header_text, current_header_color, current_body_text, current_body_color
+        global message_header_font_size, message_body_font_size, message_header_min_font_size
+
+        header_text = (current_header_text or "").strip()
+        body_text = current_body_text if current_body_text not in [None, ""] else text
+
+        if not body_text and not header_text:
             return
-        # Use main text font
-        font = ImageFont.truetype(self.font_path, 20)
-        lines = TextUtils.wrap_text(draw, text, font, self.whisplay.LCD_WIDTH - 20)
 
-        # Line height
-        line_height = self.main_text_line_height
+        header_margin_x = 10
+        body_margin_x = 10
+        top_padding = 4
+        section_gap = 6
 
-        max_scroll_top = max(0, (len(lines) + 1) * line_height - area_height)
+        body_font = ImageFont.truetype(self.font_path, message_body_font_size)
+        body_line_height = body_font.getmetrics()[0] + body_font.getmetrics()[1]
+
+        header_font_size = message_header_font_size
+        header_font = ImageFont.truetype(self.font_path, header_font_size)
+
+        if header_text:
+            max_header_width = self.whisplay.LCD_WIDTH - 2 * header_margin_x
+            while header_font_size > message_header_min_font_size:
+                bbox = header_font.getbbox(header_text)
+                header_width = bbox[2] - bbox[0]
+                if header_width <= max_header_width:
+                    break
+                header_font_size -= 1
+                header_font = ImageFont.truetype(self.font_path, header_font_size)
+
+            header_line_height = header_font.getmetrics()[0] + header_font.getmetrics()[1]
+        else:
+            header_line_height = 0
+
+        body_top = top_padding
+        if header_text:
+            body_top += header_line_height + section_gap
+
+        body_area_height = max(0, area_height - body_top)
+        if body_area_height <= 0:
+            return
+
+        lines = TextUtils.wrap_text(draw, body_text or "", body_font, self.whisplay.LCD_WIDTH - 2 * body_margin_x)
+        line_height = body_line_height
+        max_scroll_top = max(0, (len(lines) + 1) * line_height - body_area_height)
 
         if current_scroll_sync_char_end is not None and current_scroll_sync_duration_ms is not None:
             target_top = self.compute_scroll_target_from_char_end(
-                lines, line_height, area_height, current_scroll_sync_char_end
+                lines, line_height, body_area_height, current_scroll_sync_char_end
             )
             target_top = min(max_scroll_top, target_top)
             target_top = max(current_scroll_top, target_top)
@@ -219,34 +260,53 @@ class RenderThread(threading.Thread):
             current_scroll_sync_char_end = None
             current_scroll_sync_duration_ms = None
 
-        # Calculate currently visible lines
+        if header_text:
+            TextUtils.draw_mixed_text(
+                draw,
+                main_text_image,
+                header_text,
+                header_font,
+                (header_margin_x, top_padding),
+                fill=current_header_color,
+            )
+
         display_lines = []
         render_y = 0
         fin_show_lines = False
         for i, line in enumerate(lines):
-            if (i + 1) * line_height >= current_scroll_top and i * line_height - current_scroll_top <= area_height:
+            if (i + 1) * line_height >= current_scroll_top and i * line_height - current_scroll_top <= body_area_height:
                 display_lines.append(line)
                 fin_show_lines = True
             elif fin_show_lines is False:
                 render_y += line_height
-        
-        # render_text
-        render_text = ""
-        for line in display_lines:
-            render_text += line
-        if self.current_render_text != render_text:
-            self.current_render_text = render_text
-            show_text_image = Image.new("RGBA", (self.whisplay.LCD_WIDTH, render_y + len(display_lines) * line_height), (0, 0, 0, 255))
-            show_text_draw = ImageDraw.Draw(show_text_image)
-            for line in display_lines:
-                TextUtils.draw_mixed_text(show_text_draw, show_text_image, line, font, (10, render_y))
-                render_y += line_height
-            # Update cache image
-            self.text_cache_image = show_text_image
-        # Draw text_cache_image to main_text_image
-        main_text_image.paste(self.text_cache_image, (0, -int(current_scroll_top)), self.text_cache_image)
 
-        # Update scroll position
+        render_text = "".join(display_lines)
+        if self.current_render_text != f"{header_text}\n{render_text}":
+            self.current_render_text = f"{header_text}\n{render_text}"
+            show_text_image = Image.new(
+                "RGBA",
+                (self.whisplay.LCD_WIDTH, body_top + render_y + len(display_lines) * line_height),
+                (0, 0, 0, 0),
+            )
+            show_text_draw = ImageDraw.Draw(show_text_image)
+
+            render_y = body_top + render_y
+            for line in display_lines:
+                TextUtils.draw_mixed_text(
+                    show_text_draw,
+                    show_text_image,
+                    line,
+                    body_font,
+                    (body_margin_x, render_y),
+                    fill=current_body_color,
+                )
+                render_y += line_height
+
+            self.text_cache_image = show_text_image
+
+        if self.text_cache_image is not None:
+            main_text_image.paste(self.text_cache_image, (0, -int(current_scroll_top)), self.text_cache_image)
+
         if current_scroll_sync_speed is not None and current_scroll_sync_target_top is not None:
             remaining = current_scroll_sync_target_top - current_scroll_top
             if abs(remaining) <= abs(current_scroll_sync_speed):
@@ -261,6 +321,7 @@ class RenderThread(threading.Thread):
             and time.time() >= current_scroll_sync_hold_until
         ):
             current_scroll_top += scroll_speed
+
         if current_scroll_top > max_scroll_top:
             current_scroll_top = max_scroll_top
                 
@@ -353,9 +414,11 @@ class RenderThread(threading.Thread):
         self.running = False
 
 def update_display_data(status=None, emoji=None, text=None,
+                  header_text=None, header_color=None, body_text=None, body_color=None,
                   scroll_speed=None, scroll_sync=None, battery_level=None, battery_color=None, image_path=None,
                   network_connected=None, vpn_connected=None, rag_icon_visible=None, image_icon_visible=None, transaction_id=None,
                   music_progress=None, music_duration_ms=None):
+    global current_header_text, current_header_color, current_body_text, current_body_color
     global current_status, current_emoji, current_text, current_battery_level
     global current_battery_color, current_scroll_top, current_scroll_speed, current_image_path
     global current_scroll_sync_char_end, current_scroll_sync_duration_ms
@@ -432,6 +495,16 @@ def update_display_data(status=None, emoji=None, text=None,
     current_status = status if status is not None else current_status
     current_emoji = emoji if emoji is not None else current_emoji
     current_text = next_text if text is not None else current_text
+    
+    if header_text is not None:
+        current_header_text = header_text
+    if header_color is not None:
+        current_header_color = ColorUtils.get_rgb255_from_any(header_color)
+    if body_text is not None:
+        current_body_text = body_text
+    if body_color is not None:
+        current_body_color = ColorUtils.get_rgb255_from_any(body_color)
+            
     current_battery_level = battery_level if battery_level is not None else current_battery_level
     current_battery_color = battery_color if battery_color is not None else current_battery_color
     current_image_path = image_path if image_path is not None else current_image_path
@@ -502,6 +575,10 @@ def handle_client(client_socket, addr, whisplay):
                     status = content.get("status", None)
                     emoji = content.get("emoji", None)
                     text = content.get("text", None)
+                    header_text = content.get("header_text", None)
+                    header_color = content.get("header_color", None)
+                    body_text = content.get("body_text", None)
+                    body_color = content.get("body_color", None)
                     rgbled = content.get("RGB", None)
                     brightness = content.get("brightness", None)
                     scroll_speed = content.get("scroll_speed", None)
@@ -556,14 +633,18 @@ def handle_client(client_socket, addr, whisplay):
                             notification = {"event": "camera_capture"}
                             send_to_all_clients(notification)
 
-                    if (text is not None) or (status is not None) or (emoji is not None) or \
+                    if (text is not None) or (header_text is not None) or (header_color is not None) or \
+                       (body_text is not None) or (body_color is not None) or (status is not None) or (emoji is not None) or \
                        (battery_level is not None) or (battery_color is not None) or \
                               (image_path is not None) or (network_connected is not None) or \
                             (vpn_connected is not None) or \
                             (rag_icon_visible is not None) or (image_icon_visible is not None) or (scroll_sync is not None) or \
                             (music_progress is not None) or (music_duration_ms is not None):
                         update_display_data(status=status, emoji=emoji,
-                                     text=text, scroll_speed=scroll_speed, scroll_sync=scroll_sync,
+                                     text=text,
+                                     header_text=header_text, header_color=header_color,
+                                     body_text=body_text, body_color=body_color,
+                                     scroll_speed=scroll_speed, scroll_sync=scroll_sync,
                                      battery_level=battery_level, battery_color=battery_tuple,
                                                  image_path=image_path, network_connected=network_connected,
                                      vpn_connected=vpn_connected,
