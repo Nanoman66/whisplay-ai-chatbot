@@ -18,6 +18,7 @@ export type FlowStateHandler = (ctx: ChatFlowContext) => void;
 
 export interface IncomingDisplayMessage {
   fromDisplay: string;
+  routeTag: "DM" | "Ch";
   receivedAtDisplay: string;
   text: string;
 }

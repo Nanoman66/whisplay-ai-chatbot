@@ -235,9 +235,12 @@ class ChatFlow implements ChatFlowContext {
 
   private handleIncomingMeshtasticMessage = (message: MeshTextMessage): void => {
     console.log("[Meshtastic] incoming message:", message);
+	
+	const routeTag: "DM" | "Ch" = message.to === "^all" ? "Ch" : "DM";
 
     const displayMessage: IncomingDisplayMessage = {
       fromDisplay: message.from && message.from.trim() ? message.from : "Unknown",
+	  routeTag,
       receivedAtDisplay: this.formatIncomingTimestamp(new Date()),
       text: message.text?.trim() || "",
     };

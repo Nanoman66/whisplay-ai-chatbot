@@ -459,11 +459,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       emoji: "📨",
       RGB: "#0088ff",
       rag_icon_visible: false,
-      header_text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.receivedAtDisplay}`,
+      header_text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.routeTag}  ${ctx.currentIncomingMessage.receivedAtDisplay}`,
       header_color: "#ff5555",
       body_text: ctx.currentIncomingMessage.text,
       body_color: "#FFFFFF",
-      text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.receivedAtDisplay}\n${ctx.currentIncomingMessage.text}`,
+      text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.routeTag}  ${ctx.currentIncomingMessage.receivedAtDisplay}\n${ctx.currentIncomingMessage.text}`,
     });
   },
 
