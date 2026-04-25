@@ -17,6 +17,7 @@ import { flowStates } from "./chat-flow/states";
 import { ChatFlowContext, FlowName, IncomingDisplayMessage } from "./chat-flow/types";
 import { MeshtasticService } from "../meshtastic";
 import type { MeshTextMessage } from "../meshtastic";
+import { nicknameStore } from "../meshtastic/nicknameStore";
 import { playWakeupChime } from "../device/audio";
 import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
@@ -207,6 +208,10 @@ class ChatFlow implements ChatFlowContext {
     }
   };
 
+  private resolveIncomingSenderDisplay = (message: MeshTextMessage): string => {
+    return nicknameStore.getDisplayLabel(message.from);
+  };
+
   private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
       hour: "numeric",
@@ -237,9 +242,10 @@ class ChatFlow implements ChatFlowContext {
     console.log("[Meshtastic] incoming message:", message);
 	
 	const routeTag: "DM" | "Ch" = message.to === "^all" ? "Ch" : "DM";
+	nicknameStore.touchNode(message.from);
 
     const displayMessage: IncomingDisplayMessage = {
-      fromDisplay: message.from && message.from.trim() ? message.from : "Unknown",
+      fromDisplay: this.resolveIncomingSenderDisplay(message),
 	  routeTag,
       receivedAtDisplay: this.formatIncomingTimestamp(new Date()),
       text: message.text?.trim() || "",
