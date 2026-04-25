@@ -31,15 +31,22 @@ battery_font_size=13
 message_header_font_size=16
 message_body_font_size=20
 message_header_min_font_size=12
+message_footer_font_size=15
+message_footer_min_font_size=12
 
 # Global variables
 current_status = "Hello"
 current_emoji = "😄"
 current_text = "Waiting for message..."
+current_top_center_text = ""
 current_header_text = ""
 current_header_color = (170, 170, 170, 255)
 current_body_text = ""
 current_body_color = (255, 255, 255, 255)
+current_footer_text = ""
+current_footer_color = (170, 170, 170, 255)
+current_body_frame_visible = False
+current_body_frame_color = (68, 68, 68, 255)
 current_battery_level = 100
 current_battery_color = ColorUtils.get_rgb255_from_any("#55FF00")
 current_scroll_top = 0
@@ -129,7 +136,7 @@ class RenderThread(threading.Thread):
                     print(f"[Render] Failed to load image {current_image_path}: {e}")
         else:
             current_image = None
-            header_height = 88 + 10  # header + margin
+            header_height = 44 if current_top_center_text else 88 + 10
             # create a black background image for header
             image = Image.new("RGBA", (self.whisplay.LCD_WIDTH, header_height), (0, 0, 0, 255))
             draw = ImageDraw.Draw(image)
@@ -202,6 +209,7 @@ class RenderThread(threading.Thread):
         global current_scroll_sync_duration_ms, current_scroll_sync_target_top
         global current_scroll_sync_speed, current_scroll_sync_hold_until
         global current_header_text, current_header_color, current_body_text, current_body_color
+        global current_body_frame_visible, current_body_frame_color
         global message_header_font_size, message_body_font_size, message_header_min_font_size
 
         header_text = (current_header_text or "").strip()
@@ -243,7 +251,19 @@ class RenderThread(threading.Thread):
         if body_area_height <= 0:
             return
 
-        lines = TextUtils.wrap_text(draw, body_text or "", body_font, self.whisplay.LCD_WIDTH - 2 * body_margin_x)
+        lines = []
+        for paragraph in (body_text or "").split("\n"):
+            if paragraph == "":
+                lines.append("")
+            else:
+                lines.extend(
+                    TextUtils.wrap_text(
+                        draw,
+                        paragraph,
+                        body_font,
+                        self.whisplay.LCD_WIDTH - 2 * body_margin_x,
+                    )
+                )
         line_height = body_line_height
         max_scroll_top = max(0, (len(lines) + 1) * line_height - body_area_height)
 
@@ -259,6 +279,14 @@ class RenderThread(threading.Thread):
             current_scroll_sync_speed = (target_top - current_scroll_top) / frames
             current_scroll_sync_char_end = None
             current_scroll_sync_duration_ms = None
+
+        if current_body_frame_visible:
+            draw.rounded_rectangle(
+                [4, 4, self.whisplay.LCD_WIDTH - 5, area_height - 5],
+                radius=4,
+                outline=current_body_frame_color,
+                width=1,
+            )
 
         if header_text:
             TextUtils.draw_mixed_text(
@@ -292,14 +320,15 @@ class RenderThread(threading.Thread):
 
             render_y = body_top + render_y
             for line in display_lines:
-                TextUtils.draw_mixed_text(
-                    show_text_draw,
-                    show_text_image,
-                    line,
-                    body_font,
-                    (body_margin_x, render_y),
-                    fill=current_body_color,
-                )
+                if line:
+                    TextUtils.draw_mixed_text(
+                        show_text_draw,
+                        show_text_image,
+                        line,
+                        body_font,
+                        (body_margin_x, render_y),
+                        fill=current_body_color,
+                    )
                 render_y += line_height
 
             self.text_cache_image = show_text_image
@@ -328,6 +357,7 @@ class RenderThread(threading.Thread):
 
     def render_header(self, image, draw, status, emoji, battery_level, battery_color):
         global current_status, current_emoji, current_battery_level, current_battery_color
+        global current_top_center_text
         global status_font_size, emoji_font_size, battery_font_size
         
         status_font = ImageFont.truetype(self.font_path, status_font_size)
@@ -336,22 +366,6 @@ class RenderThread(threading.Thread):
 
         image_width = self.whisplay.LCD_WIDTH
 
-        ascent_status, _ = status_font.getmetrics()
-        ascent_emoji, _ = emoji_font.getmetrics()
-
-        top_height = status_font_size + emoji_font_size + 20
-
-        # Draw status centered
-        status_bbox = status_font.getbbox(current_status)
-        status_w = status_bbox[2] - status_bbox[0]
-        TextUtils.draw_mixed_text(draw, image, current_status, status_font, (whisplay.CornerHeight, 0))
-
-        # Draw emoji centered
-        emoji_bbox = emoji_font.getbbox(current_emoji)
-        emoji_w = emoji_bbox[2] - emoji_bbox[0]
-        TextUtils.draw_mixed_text(draw, image, current_emoji, emoji_font, ((image_width - emoji_w) // 2, status_font_size + 8))
-        
-        # Draw battery icon
         status_icon_context = {
             "battery_level": battery_level,
             "battery_color": battery_color,
@@ -363,8 +377,51 @@ class RenderThread(threading.Thread):
             "image_icon_visible": current_image_icon_visible,
         }
         status_icons = self.build_status_icons(status_icon_context)
+
+        if current_top_center_text:
+            top_center_text = current_top_center_text
+            if top_center_text == "{time}":
+                top_center_text = time.strftime("%I:%M %p").lstrip("0")
+
+            top_y = 4
+            TextUtils.draw_mixed_text(
+                draw,
+                image,
+                current_status,
+                status_font,
+                (whisplay.CornerHeight, top_y),
+            )
+
+            center_bbox = status_font.getbbox(top_center_text)
+            center_w = center_bbox[2] - center_bbox[0]
+            center_x = max(0, (image_width - center_w) // 2)
+
+            TextUtils.draw_mixed_text(
+                draw,
+                image,
+                top_center_text,
+                status_font,
+                (center_x, top_y),
+            )
+
+            self.render_status_icons(draw, status_icons, image_width)
+            return status_font_size + 12
+
+        top_height = status_font_size + emoji_font_size + 20
+
+        TextUtils.draw_mixed_text(draw, image, current_status, status_font, (whisplay.CornerHeight, 0))
+
+        emoji_bbox = emoji_font.getbbox(current_emoji)
+        emoji_w = emoji_bbox[2] - emoji_bbox[0]
+        TextUtils.draw_mixed_text(
+            draw,
+            image,
+            current_emoji,
+            emoji_font,
+            ((image_width - emoji_w) // 2, status_font_size + 8),
+        )
+
         self.render_status_icons(draw, status_icons, image_width)
-        
         return top_height
 
     def build_status_icons(self, context):
@@ -414,11 +471,15 @@ class RenderThread(threading.Thread):
         self.running = False
 
 def update_display_data(status=None, emoji=None, text=None,
+                  top_center_text=None,
                   header_text=None, header_color=None, body_text=None, body_color=None,
+                  body_frame_visible=None, body_frame_color=None,
                   scroll_speed=None, scroll_sync=None, battery_level=None, battery_color=None, image_path=None,
                   network_connected=None, vpn_connected=None, rag_icon_visible=None, image_icon_visible=None, transaction_id=None,
                   music_progress=None, music_duration_ms=None):
+    global current_top_center_text
     global current_header_text, current_header_color, current_body_text, current_body_color
+    global current_body_frame_visible, current_body_frame_color
     global current_status, current_emoji, current_text, current_battery_level
     global current_battery_color, current_scroll_top, current_scroll_speed, current_image_path
     global current_scroll_sync_char_end, current_scroll_sync_duration_ms
@@ -496,6 +557,8 @@ def update_display_data(status=None, emoji=None, text=None,
     current_emoji = emoji if emoji is not None else current_emoji
     current_text = next_text if text is not None else current_text
     
+    if top_center_text is not None:
+        current_top_center_text = top_center_text
     if header_text is not None:
         current_header_text = header_text
     if header_color is not None:
@@ -504,6 +567,10 @@ def update_display_data(status=None, emoji=None, text=None,
         current_body_text = body_text
     if body_color is not None:
         current_body_color = ColorUtils.get_rgb255_from_any(body_color)
+    if body_frame_visible is not None:
+        current_body_frame_visible = bool(body_frame_visible)
+    if body_frame_color is not None:
+        current_body_frame_color = ColorUtils.get_rgb255_from_any(body_frame_color)
             
     current_battery_level = battery_level if battery_level is not None else current_battery_level
     current_battery_color = battery_color if battery_color is not None else current_battery_color
@@ -575,10 +642,13 @@ def handle_client(client_socket, addr, whisplay):
                     status = content.get("status", None)
                     emoji = content.get("emoji", None)
                     text = content.get("text", None)
+                    top_center_text = content.get("top_center_text", None)
                     header_text = content.get("header_text", None)
                     header_color = content.get("header_color", None)
                     body_text = content.get("body_text", None)
                     body_color = content.get("body_color", None)
+                    body_frame_visible = content.get("body_frame_visible", None)
+                    body_frame_color = content.get("body_frame_color", None)
                     rgbled = content.get("RGB", None)
                     brightness = content.get("brightness", None)
                     scroll_speed = content.get("scroll_speed", None)
@@ -633,8 +703,11 @@ def handle_client(client_socket, addr, whisplay):
                             notification = {"event": "camera_capture"}
                             send_to_all_clients(notification)
 
-                    if (text is not None) or (header_text is not None) or (header_color is not None) or \
-                       (body_text is not None) or (body_color is not None) or (status is not None) or (emoji is not None) or \
+                    if (text is not None) or (top_center_text is not None) or \
+                       (header_text is not None) or (header_color is not None) or \
+                       (body_text is not None) or (body_color is not None) or \
+                       (body_frame_visible is not None) or (body_frame_color is not None) or \
+                       (status is not None) or (emoji is not None) or \
                        (battery_level is not None) or (battery_color is not None) or \
                               (image_path is not None) or (network_connected is not None) or \
                             (vpn_connected is not None) or \
@@ -642,8 +715,10 @@ def handle_client(client_socket, addr, whisplay):
                             (music_progress is not None) or (music_duration_ms is not None):
                         update_display_data(status=status, emoji=emoji,
                                      text=text,
+                                     top_center_text=top_center_text,
                                      header_text=header_text, header_color=header_color,
                                      body_text=body_text, body_color=body_color,
+                                     body_frame_visible=body_frame_visible, body_frame_color=body_frame_color,
                                      scroll_speed=scroll_speed, scroll_sync=scroll_sync,
                                      battery_level=battery_level, battery_color=battery_tuple,
                                                  image_path=image_path, network_connected=network_connected,

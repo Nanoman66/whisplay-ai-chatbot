@@ -50,6 +50,7 @@ export interface ChatFlowContext {
   musicDisplayText: string;
   appMode: "chatbot" | "meshtastic";
   meshtasticService: MeshtasticService | null;
+  currentHomeSelectionId: string | null;
   incomingMessageQueue: IncomingDisplayMessage[];
   currentIncomingMessage: IncomingDisplayMessage | null;
 
@@ -60,5 +61,9 @@ export interface ChatFlowContext {
   endWakeSession: () => void;
   shouldContinueWakeSession: () => boolean;
   shouldEndAfterAnswer: (text: string) => boolean;
+  getHomeScreenTitle: () => string;
+  initializeHomeSelection: () => void;
+  cycleHomeSelection: () => void;
+  getHomeContactListText: () => string;
   streamExternalReply: (text: string, emoji?: string) => Promise<void>;
 }
