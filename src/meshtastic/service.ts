@@ -1,10 +1,46 @@
 import { MeshtasticBridgeProcess } from "./bridgeProcess";
 import { MeshtasticClient } from "./client";
 import { MeshTextMessage } from "./types";
+import { meshtasticConfig } from "./config";
 
 function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
   if (value == null) return defaultValue;
   return value.toLowerCase() === "true";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForBridgeReady(): Promise<void> {
+  const maxAttempts = 30;
+  const delayMs = 1000;
+  const healthUrl = `http://127.0.0.1:${meshtasticConfig.bridgePort}/health`;
+
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(healthUrl);
+      if (response.ok) {
+        console.log(`[Meshtastic] bridge ready on attempt ${attempt}.`);
+        return;
+      }
+
+      lastError = new Error(`Bridge health check returned ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+
+    console.warn(
+      `[Meshtastic] waiting for bridge readiness attempt ${attempt}/${maxAttempts}.`,
+      lastError,
+    );
+
+    await sleep(delayMs);
+  }
+
+  throw lastError ?? new Error("Meshtastic bridge did not become ready.");
 }
 
 export class MeshtasticService {
@@ -20,6 +56,7 @@ export class MeshtasticService {
 
   async start(): Promise<void> {
     this.bridgeProcess.start();
+	await waitForBridgeReady();
 
     this.client.onMessage((message) => {
       this.incomingQueue.push(message);
