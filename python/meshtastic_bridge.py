@@ -2,6 +2,7 @@
 import json
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List
 from urllib.parse import urlparse
@@ -17,7 +18,10 @@ MAX_MESSAGES = 100
 
 messages_lock = threading.Lock()
 messages: List[Dict[str, Any]] = []
+
+iface_lock = threading.Lock()
 iface = None
+connected = False
 
 
 def add_message(entry: Dict[str, Any]) -> None:
@@ -26,6 +30,21 @@ def add_message(entry: Dict[str, Any]) -> None:
         messages.append(entry)
         if len(messages) > MAX_MESSAGES:
             messages = messages[-MAX_MESSAGES:]
+
+def on_connection_established(interface, topic=pub.AUTO_TOPIC) -> None:
+    global iface, connected
+    with iface_lock:
+        iface = interface
+        connected = True
+    print("[meshtastic_bridge] connection established")
+
+
+def on_connection_lost(interface, topic=pub.AUTO_TOPIC) -> None:
+    global iface, connected
+    with iface_lock:
+        connected = False
+        iface = None
+    print("[meshtastic_bridge] connection lost")
 
 
 def on_receive(packet: Dict[str, Any], interface) -> None:
@@ -45,6 +64,34 @@ def on_receive(packet: Dict[str, Any], interface) -> None:
     add_message(entry)
     print(f"[meshtastic_bridge] received: {entry}")
 
+def connector_loop() -> None:
+    global iface, connected
+
+    while True:
+        with iface_lock:
+            already_connected = connected
+
+        if already_connected:
+            time.sleep(2)
+            continue
+
+        try:
+            print(f"[meshtastic_bridge] connecting to {MESH_HOST}:{MESH_PORT}")
+            new_iface = meshtastic.tcp_interface.TCPInterface(
+                hostname=MESH_HOST,
+                portNumber=MESH_PORT,
+            )
+            with iface_lock:
+                iface = new_iface
+                connected = True
+            print("[meshtastic_bridge] TCP interface created")
+        except Exception as exc:
+            with iface_lock:
+                iface = None
+                connected = False
+            print(f"[meshtastic_bridge] connect failed: {exc}")
+
+        time.sleep(2)
 
 class BridgeHandler(BaseHTTPRequestHandler):
     def _send_json(self, status: int, payload: Dict[str, Any]) -> None:
@@ -59,6 +106,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/health":
+            with iface_lock:
+                is_connected = connected
+            
             self._send_json(
                 200,
                 {
@@ -67,7 +117,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     "bridgePort": BRIDGE_PORT,
                     "meshHost": MESH_HOST,
                     "meshPort": MESH_PORT,
-                    "connected": iface is not None,
+                    "connected": is_connected,
                 },
             )
             return
@@ -86,7 +136,11 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"ok": False, "error": "Not found"})
             return
 
-        if iface is None:
+        with iface_lock:
+            current_iface = iface
+            is_connected = connected
+
+        if current_iface is None or not is_connected:
             self._send_json(503, {"ok": False, "error": "Meshtastic interface not connected"})
             return
 
@@ -118,7 +172,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if destination_id:
                 send_kwargs["destinationId"] = destination_id
 
-            iface.sendText(**send_kwargs)
+            current_iface.sendText(**send_kwargs)
             self._send_json(200, {"ok": True})
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": str(exc)})
@@ -128,15 +182,12 @@ class BridgeHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    global iface
-
     pub.subscribe(on_receive, "meshtastic.receive.text")
+    pub.subscribe(on_connection_established, "meshtastic.connection.established")
+    pub.subscribe(on_connection_lost, "meshtastic.connection.lost")
 
-    print(f"[meshtastic_bridge] connecting to {MESH_HOST}:{MESH_PORT}")
-    iface = meshtastic.tcp_interface.TCPInterface(
-        hostname=MESH_HOST,
-        portNumber=MESH_PORT,
-    )
+    connector = threading.Thread(target=connector_loop, daemon=True)
+    connector.start()
 
     print(f"[meshtastic_bridge] serving on http://{BRIDGE_HOST}:{BRIDGE_PORT}")
     server = HTTPServer((BRIDGE_HOST, BRIDGE_PORT), BridgeHandler)
