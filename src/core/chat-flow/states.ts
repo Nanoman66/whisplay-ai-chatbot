@@ -42,6 +42,80 @@ import { isMusicPlaying, getCurrentTrackTitle, stopMusicPlayback, startPendingMu
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
+    if (ctx.appMode === "meshtastic") {
+      let longPressTimer: NodeJS.Timeout | null = null;
+      let longPressHandled = false;
+
+      const renderHomeScreen = () => {
+        ctx.initializeHomeSelection();
+        const homeList = ctx.getHomeContactListText();
+
+        display({
+          status: ctx.getHomeScreenTitle(),
+          emoji: "",
+          top_center_text: "{time}",
+          RGB: "#000055",
+          rag_icon_visible: false,
+          header_text: "",
+          header_color: "#AAAAAA",
+          body_text: homeList,
+          body_color: "#FFFFFF",
+          body_frame_visible: true,
+          body_frame_color: "#444444",
+          text: homeList,
+        });
+      };
+
+      onButtonDoubleClick(null);
+
+      onButtonPressed(() => {
+        resetCameraModeControl();
+        stopMusicPlayback();
+
+        longPressHandled = false;
+        longPressTimer = setTimeout(() => {
+          longPressHandled = true;
+          ctx.transitionTo("listening");
+        }, 700);
+      });
+
+      onButtonReleased(() => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+
+        if (longPressHandled) {
+          return;
+        }
+
+        ctx.cycleHomeSelection();
+        renderHomeScreen();
+      });
+
+      onCameraModeExit(null);
+
+      onTextInput((text: string) => {
+        if (ctx.currentFlowName !== "sleep") return;
+        ctx.answerId += 1;
+        ctx.asrText = text;
+        display({ status: "recognizing", text, text_input_enabled: false });
+        ctx.transitionTo("review_outgoing");
+      });
+
+      if (
+        !ctx.currentIncomingMessage &&
+        ctx.incomingMessageQueue.length > 0
+      ) {
+        ctx.currentIncomingMessage = ctx.incomingMessageQueue.shift() || null;
+        ctx.transitionTo("incoming_message");
+        return;
+      }
+
+      renderHomeScreen();
+      return;
+    }
+
     onButtonPressed(() => {
       resetCameraModeControl();
       // Stop any playing music when waking up
@@ -70,17 +144,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         ctx.transitionTo("camera");
       });
     }
-	
-	if (
-      ctx.appMode === "meshtastic" &&
-      !ctx.currentIncomingMessage &&
-      ctx.incomingMessageQueue.length > 0
-    ) {
-      ctx.currentIncomingMessage = ctx.incomingMessageQueue.shift() || null;
-      ctx.transitionTo("incoming_message");
-      return;
-    }
-	
+
     display({
       status: "idle",
       emoji: "😴",
@@ -88,9 +152,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       rag_icon_visible: false,
       ...(getCurrentStatus().text.endsWith("Listening...") || !getCurrentStatus().text
         ? {
-          text: `Long Press the button to say something${ctx.enableCamera ? ",\ndouble click to launch camera" : ""
-            }.`,
-        }
+            text: `Long Press the button to say something${ctx.enableCamera ? ",\ndouble click to launch camera" : ""
+              }.`,
+          }
         : {}),
     });
   },

@@ -60,6 +60,7 @@ class ChatFlow implements ChatFlowContext {
   musicDisplayText: string = "";
   incomingMessageQueue: IncomingDisplayMessage[] = [];
   currentIncomingMessage: IncomingDisplayMessage | null = null;
+  currentHomeSelectionId: string | null = null;
     appMode: "chatbot" | "meshtastic" =
     (process.env.APP_MODE || "chatbot").toLowerCase() === "meshtastic"
       ? "meshtastic"
@@ -112,6 +113,7 @@ class ChatFlow implements ChatFlowContext {
       this.enableCamera = true;
     }
 
+    this.initializeHomeSelection();
     this.transitionTo("sleep");
 	
 	if (this.appMode === "meshtastic") {
@@ -211,6 +213,78 @@ class ChatFlow implements ChatFlowContext {
   private resolveIncomingSenderDisplay = (message: MeshTextMessage): string => {
     return nicknameStore.getDisplayLabel(message.from);
   };
+  
+    private getMeshtasticContactOptions = (): Array<{ nodeId: string | null; label: string }> => {
+    return [
+      { nodeId: null, label: "Channel" },
+      ...nicknameStore.listKnownNodes().map((entry) => ({
+        nodeId: entry.nodeId,
+        label: nicknameStore.getDisplayLabel(entry.nodeId),
+      })),
+    ];
+  };
+
+  getHomeScreenTitle = (): string => {
+    const configured = (process.env.MESHTASTIC_HOME_LABEL || "").trim();
+    if (configured) {
+      return configured;
+    }
+
+    const hostname = (process.env.HOSTNAME || "").trim();
+    if (hostname) {
+      return hostname;
+    }
+
+    return "AIMeshyPi";
+  };
+
+  initializeHomeSelection = (): void => {
+    const options = this.getMeshtasticContactOptions();
+    const stillValid = options.some(
+      (option) => option.nodeId === this.currentHomeSelectionId,
+    );
+
+    if (!stillValid) {
+      this.currentHomeSelectionId = options[0]?.nodeId ?? null;
+    }
+  };
+
+  cycleHomeSelection = (): void => {
+    const options = this.getMeshtasticContactOptions();
+    if (!options.length) {
+      this.currentHomeSelectionId = null;
+      return;
+    }
+
+    const currentIndex = options.findIndex(
+      (option) => option.nodeId === this.currentHomeSelectionId,
+    );
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % options.length : 0;
+    this.currentHomeSelectionId = options[nextIndex].nodeId;
+  };
+
+  getHomeContactListText = (): string => {
+    const options = this.getMeshtasticContactOptions();
+    if (!options.length) {
+      return "No contacts";
+    }
+
+    const selectedIndex = options.findIndex(
+      (option) => option.nodeId === this.currentHomeSelectionId,
+    );
+    const normalizedSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+
+    const maxVisible = 5;
+    let start = Math.max(0, normalizedSelectedIndex - Math.floor(maxVisible / 2));
+    let end = Math.min(options.length, start + maxVisible);
+    start = Math.max(0, end - maxVisible);
+
+    return options.slice(start, end).map((option, index) => {
+      const absoluteIndex = start + index;
+      const marker = absoluteIndex === normalizedSelectedIndex ? "›" : " ";
+      return `${marker} ${option.label}`;
+    }).join("\n");
+  };
 
   private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
@@ -301,6 +375,16 @@ class ChatFlow implements ChatFlowContext {
     if (flowName !== "music" && isMusicPlaying()) {
       stopMusicPlayback();
     }
+
+    display({
+      header_text: "",
+      header_color: "#AAAAAA",
+      body_text: "",
+      body_color: "#FFFFFF",
+      body_frame_visible: false,
+      body_frame_color: "#444444",
+    });
+
     console.log(`[${getCurrentTimeTag()}] switch to:`, flowName);
     this.stateMachine.transitionTo(flowName);
     display({ text_input_enabled: flowName === "sleep" });

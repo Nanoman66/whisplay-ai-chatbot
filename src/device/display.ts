@@ -12,10 +12,15 @@ export interface Status {
   status: string;
   emoji: string;
   text: string;
+  top_center_text: string;
   header_text: string;
   header_color: string;
   body_text: string;
   body_color: string;
+  footer_text: string;
+  footer_color: string;
+  body_frame_visible: boolean;
+  body_frame_color: string;
   text_input_enabled?: boolean;
   scroll_speed: number;
   scroll_sync?: {
@@ -43,10 +48,15 @@ export class WhisplayDisplay {
     status: "starting",
     emoji: "😊",
     text: "",
+    top_center_text: "{time}",
 	header_text: "",
     header_color: "#AAAAAA",
     body_text: "",
     body_color: "#FFFFFF",
+    footer_text: "",
+    footer_color: "#AAAAAA",
+    body_frame_visible: false,
+    body_frame_color: "#444444",
     text_input_enabled: false,
     scroll_speed: 3,
     scroll_sync: undefined,
@@ -368,10 +378,15 @@ export class WhisplayDisplay {
       status,
       emoji,
       text,
+      top_center_text,
 	  header_text,
       header_color,
       body_text,
       body_color,
+      footer_text,
+      footer_color,
+      body_frame_visible,
+      body_frame_color,
       text_input_enabled,
       RGB,
       brightness,
@@ -402,10 +417,15 @@ export class WhisplayDisplay {
     this.currentStatus.status = status;
     this.currentStatus.emoji = emoji;
     this.currentStatus.text = text;
+    this.currentStatus.top_center_text = top_center_text;
 	this.currentStatus.header_text = header_text;
     this.currentStatus.header_color = header_color;
     this.currentStatus.body_text = body_text;
     this.currentStatus.body_color = body_color;
+    this.currentStatus.footer_text = footer_text;
+    this.currentStatus.footer_color = footer_color;
+    this.currentStatus.body_frame_visible = body_frame_visible;
+    this.currentStatus.body_frame_color = body_frame_color;
     this.currentStatus.text_input_enabled = text_input_enabled;
     this.currentStatus.RGB = RGB;
     this.currentStatus.brightness = brightness;
