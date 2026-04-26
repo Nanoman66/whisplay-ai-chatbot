@@ -136,20 +136,25 @@ class RenderThread(threading.Thread):
                     print(f"[Render] Failed to load image {current_image_path}: {e}")
         else:
             current_image = None
-            header_height = 44 if current_top_center_text else 88 + 10
-            # create a black background image for header
-            image = Image.new("RGBA", (self.whisplay.LCD_WIDTH, header_height), (0, 0, 0, 255))
+            header_canvas_height = 44 if current_top_center_text else 88 + 10
+            image = Image.new("RGBA", (self.whisplay.LCD_WIDTH, header_canvas_height), (0, 0, 0, 255))
             draw = ImageDraw.Draw(image)
-            
-            clock_font_size = 24
-            # clock_font = ImageFont.truetype(self.font_path, clock_font_size)
 
-            # current_time = time.strftime("%H:%M:%S")
-            # draw.text((self.whisplay.LCD_WIDTH // 2, self.whisplay.LCD_HEIGHT // 2), current_time, font=clock_font, fill=(255, 255, 255, 255))
-            
-            # render header
-            self.render_header(image, draw, status, emoji, battery_level, battery_color)
-            self.whisplay.draw_image(0, 0, self.whisplay.LCD_WIDTH, header_height, ImageUtils.image_to_rgb565(image, self.whisplay.LCD_WIDTH, header_height))
+            rendered_header_height = self.render_header(image, draw, status, emoji, battery_level, battery_color)
+
+            if current_top_center_text:
+                header_height = max(28, rendered_header_height + 2)
+            else:
+                header_height = header_canvas_height
+
+            header_image = image.crop((0, 0, self.whisplay.LCD_WIDTH, header_height))
+            self.whisplay.draw_image(
+                0,
+                0,
+                self.whisplay.LCD_WIDTH,
+                header_height,
+                ImageUtils.image_to_rgb565(header_image, self.whisplay.LCD_WIDTH, header_height),
+            )
 
             # render music progress bar if active
             progress_bar_height = 0
@@ -224,7 +229,7 @@ class RenderThread(threading.Thread):
         header_margin_x = 10
         body_margin_x = 10
         top_padding = 4
-        header_body_gap = 4
+        header_body_gap = 6
         body_footer_gap = 6
 
         body_font = ImageFont.truetype(self.font_path, message_body_font_size)
@@ -306,9 +311,10 @@ class RenderThread(threading.Thread):
             current_scroll_sync_duration_ms = None
 
         if current_body_frame_visible:
+            frame_top = 2
             frame_bottom = area_height - footer_reserved_height - 5
             draw.rounded_rectangle(
-                [8, 4, self.whisplay.LCD_WIDTH - 9, frame_bottom],
+                [8, frame_top, self.whisplay.LCD_WIDTH - 9, frame_bottom],
                 radius=4,
                 outline=current_body_frame_color,
                 width=1,
@@ -326,18 +332,15 @@ class RenderThread(threading.Thread):
 
         if footer_text:
             footer_y = area_height - footer_line_height - 4
-            footer_bbox = footer_font.getbbox(footer_text)
-            footer_width = footer_bbox[2] - footer_bbox[0]
-            footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
-
-            TextUtils.draw_mixed_text(
-                draw,
-                main_text_image,
+            footer_img = TextUtils.get_line_img(
                 footer_text,
                 footer_font,
-                (footer_x, footer_y),
-                fill=current_footer_color,
+                current_footer_color,
             )
+            footer_width = footer_img.width
+            footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
+
+            main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
 
         display_lines = []
         render_y = 0
@@ -523,7 +526,7 @@ class RenderThread(threading.Thread):
     def render_status_icons(self, draw, icons, image_width):
         if not icons:
             return
-        right_margin = 10
+        right_margin = 15
         icon_gap = 8
         cursor_x = image_width - right_margin
         for icon in icons:

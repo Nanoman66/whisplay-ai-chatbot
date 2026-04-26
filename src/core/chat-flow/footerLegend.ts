@@ -6,9 +6,9 @@ export interface FooterLegendSpec {
 
 export const FOOTER_LEGEND_COLOR = "#ff5555";
 
-const SINGLE_GLYPH = "\u25CF";
-const DOUBLE_GLYPH = "\u25CF\u25CF";
-const LONG_GLYPH = "\u2501";
+const SINGLE_GLYPH = "+";
+const DOUBLE_GLYPH = "++";
+const LONG_GLYPH = "_ =";
 const SEGMENT_GAP = "  ";
 
 function normalizeLabel(label?: string): string | null {
