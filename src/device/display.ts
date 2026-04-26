@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { ChildProcess, exec, execSync } from "child_process";
 import { resolve } from "path";
 import { Socket } from "net";
 import { getCurrentTimeTag } from "../utils";
@@ -83,7 +83,7 @@ export class WhisplayDisplay {
   private onCameraCaptureCallback: () => void = () => {};
   private textInputCallback: (text: string) => void = () => {};
   private isReady: Promise<void>;
-  private pythonProcess: any; // Placeholder for Python process if needed
+  private pythonProcess: ChildProcess | null = null;
   private buttonPressTimeArray: number[] = [];
   private buttonReleaseTimeArray: number[] = [];
   private buttonDetectInterval: NodeJS.Timeout | null = null;
@@ -159,16 +159,69 @@ export class WhisplayDisplay {
     }, 800);
   }
 
+  private cleanupStalePythonUiProcess(): void {
+    if (!this.deviceEnabled || process.platform === "win32") {
+      return;
+    }
+
+    try {
+      execSync('pkill -f "python3 chatbot-ui.py" >/dev/null 2>&1 || true', {
+        stdio: "ignore",
+      });
+    } catch (error) {
+      console.warn("[WhisplayDisplay] stale chatbot-ui cleanup failed:", error);
+    }
+  }
+
+  private terminateChildProcess(
+    proc: ChildProcess | null,
+    label: string,
+  ): void {
+    if (!proc) {
+      return;
+    }
+
+    const pid = proc.pid;
+    console.log(`Killing ${label}...`, pid);
+
+    try {
+      proc.kill("SIGTERM");
+    } catch (error: any) {
+      if (error?.code !== "ESRCH") {
+        console.warn(`[WhisplayDisplay] SIGTERM failed for ${label}:`, error);
+      }
+    }
+
+    if (pid) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (error: any) {
+        if (error?.code !== "ESRCH") {
+          console.warn(`[WhisplayDisplay] SIGKILL failed for ${label}:`, error);
+        }
+      }
+    }
+  }
+
   startPythonProcess(): void {
     if (!this.deviceEnabled) {
       return;
     }
+
+    if (this.pythonProcess && this.pythonProcess.exitCode == null && !this.pythonProcess.killed) {
+      return;
+    }
+
+    this.cleanupStalePythonUiProcess();
+
     const command = `cd ${resolve(
       __dirname,
       "../../python",
     )} && python3 chatbot-ui.py`;
+
     console.log("Starting Python process...");
-    this.pythonProcess = exec(command, (error, stdout, stderr) => {
+
+    const proc = exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error("Error starting Python process:", error);
         return;
@@ -176,24 +229,32 @@ export class WhisplayDisplay {
       console.log("Python process stdout:", stdout);
       console.error("Python process stderr:", stderr);
     });
-    this.pythonProcess.stdout.on("data", (data: any) =>
+
+    this.pythonProcess = proc;
+
+    proc.stdout?.on("data", (data: any) =>
       console.log(data.toString()),
     );
-    this.pythonProcess.stderr.on("data", (data: any) =>
+    proc.stderr?.on("data", (data: any) =>
       console.error(data.toString()),
     );
+
+    proc.on("exit", (code, signal) => {
+      console.log(`[whisplay-python] exited code=${code} signal=${signal}`);
+      if (this.pythonProcess?.pid === proc.pid) {
+        this.pythonProcess = null;
+      }
+    });
   }
 
   killPythonProcess(): void {
     if (!this.deviceEnabled) {
       return;
     }
-    if (this.pythonProcess) {
-      console.log("Killing Python process...", this.pythonProcess.pid);
-      this.pythonProcess.kill();
-      process.kill(this.pythonProcess.pid, "SIGKILL");
-      this.pythonProcess = null;
-    }
+
+    const proc = this.pythonProcess;
+    this.pythonProcess = null;
+    this.terminateChildProcess(proc, "Python process");
   }
 
   async connectWithRetry(

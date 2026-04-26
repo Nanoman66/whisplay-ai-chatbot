@@ -379,33 +379,64 @@ class RenderThread(threading.Thread):
         status_icons = self.build_status_icons(status_icon_context)
 
         if current_top_center_text:
-            top_center_text = current_top_center_text
-            if top_center_text == "{time}":
-                top_center_text = time.strftime("%I:%M %p").lstrip("0")
+            clock_text = current_top_center_text
+            if clock_text == "{time}":
+                clock_text = time.strftime("%I:%M").lstrip("0")
 
             top_y = 4
-            TextUtils.draw_mixed_text(
-                draw,
-                image,
-                current_status,
-                status_font,
-                (whisplay.CornerHeight, top_y),
-            )
+            left_x = whisplay.CornerHeight
 
-            center_bbox = status_font.getbbox(top_center_text)
+            clock_font_size = status_font_size
+            clock_font = ImageFont.truetype(self.font_path, clock_font_size)
+
+            clock_bbox = clock_font.getbbox(clock_text)
+            clock_w = clock_bbox[2] - clock_bbox[0]
+            clock_right = left_x + clock_w
+
+            right_reserved = 78
+            gap_after_clock = 10
+            gap_before_icons = 10
+
+            screen_center = image_width // 2
+            left_clearance = screen_center - (clock_right + gap_after_clock)
+            right_clearance = (image_width - right_reserved - gap_before_icons) - screen_center
+            safe_half_width = max(20, min(left_clearance, right_clearance))
+            safe_centered_width = max(40, safe_half_width * 2)
+
+            status_text = current_status
+            center_font_size = status_font_size
+            center_font = ImageFont.truetype(self.font_path, center_font_size)
+
+            while center_font_size > 10:
+                center_bbox = center_font.getbbox(status_text)
+                center_w = center_bbox[2] - center_bbox[0]
+                if center_w <= safe_centered_width:
+                    break
+                center_font_size -= 1
+                center_font = ImageFont.truetype(self.font_path, center_font_size)
+
+            center_bbox = center_font.getbbox(status_text)
             center_w = center_bbox[2] - center_bbox[0]
             center_x = max(0, (image_width - center_w) // 2)
 
             TextUtils.draw_mixed_text(
                 draw,
                 image,
-                top_center_text,
-                status_font,
+                clock_text,
+                clock_font,
+                (left_x, top_y),
+            )
+
+            TextUtils.draw_mixed_text(
+                draw,
+                image,
+                status_text,
+                center_font,
                 (center_x, top_y),
             )
 
             self.render_status_icons(draw, status_icons, image_width)
-            return status_font_size + 12
+            return max(clock_font_size, center_font_size) + 12
 
         top_height = status_font_size + emoji_font_size + 20
 
