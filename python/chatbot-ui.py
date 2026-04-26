@@ -224,7 +224,8 @@ class RenderThread(threading.Thread):
         header_margin_x = 10
         body_margin_x = 10
         top_padding = 4
-        section_gap = 6
+        header_body_gap = 4
+        body_footer_gap = 6
 
         body_font = ImageFont.truetype(self.font_path, message_body_font_size)
         body_line_height = body_font.getmetrics()[0] + body_font.getmetrics()[1]
@@ -265,11 +266,11 @@ class RenderThread(threading.Thread):
 
         body_top = top_padding
         if header_text:
-            body_top += header_line_height + section_gap
+            body_top += header_line_height + header_body_gap
 
         footer_reserved_height = 0
         if footer_text:
-            footer_reserved_height = footer_line_height + section_gap + 4
+            footer_reserved_height = footer_line_height + body_footer_gap + 4
 
         body_area_height = max(0, area_height - body_top - footer_reserved_height)
         if body_area_height <= 0:

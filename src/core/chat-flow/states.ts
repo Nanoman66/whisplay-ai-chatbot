@@ -39,8 +39,7 @@ import {
 } from "./camera-mode";
 import { DEFAULT_EMOJI } from "../../utils";
 import { isMusicPlaying, getCurrentTrackTitle, stopMusicPlayback, startPendingMusicPlayback, onMusicTrackChange, onMusicPlaybackEnd } from "../../device/music-player";
-
-const FOOTER_LEGEND_COLOR = "#ff5555";
+import { buildFooterLegend, FOOTER_LEGEND_COLOR } from "./footerLegend";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
@@ -62,7 +61,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           header_color: "#AAAAAA",
           body_text: homeList,
           body_color: "#FFFFFF",
-		  footer_text: "+ next  ++ select  -- speak",
+          footer_text: buildFooterLegend({
+            single: "next",
+            double: "select",
+            long: "dictate",
+          }),
           footer_color: FOOTER_LEGEND_COLOR,
           body_frame_visible: true,
           body_frame_color: "#444444",
@@ -280,7 +283,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       emoji: DEFAULT_EMOJI,
       RGB: "#00ff00",
       text: "Listening...",
-      footer_text: "-- release to text",
+      footer_text: buildFooterLegend({
+        long: "release to transcribe",
+      }),
       footer_color: FOOTER_LEGEND_COLOR,
       rag_icon_visible: false,
     });
@@ -388,7 +393,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       header_color: "#00c8a3",
       body_text: ctx.asrText,
       body_color: "#FFFFFF",
-      footer_text: "+ switch To:  ++ send  -- discard",
+      footer_text: buildFooterLegend({
+        single: "switch To:",
+        double: "send",
+        long: "discard",
+      }),
       footer_color: FOOTER_LEGEND_COLOR,
       text: `To: ${recipientLabel}\n${ctx.asrText}`,
       rag_icon_visible: false,
@@ -560,7 +569,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       header_color: "#ff5555",
       body_text: ctx.currentIncomingMessage.text,
       body_color: "#FFFFFF",
-      footer_text: "+ dismiss",
+      footer_text: buildFooterLegend({
+        single: "dismiss",
+      }),
       footer_color: FOOTER_LEGEND_COLOR,
       text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.routeTag}  ${ctx.currentIncomingMessage.receivedAtDisplay}\n${ctx.currentIncomingMessage.text}`,
     });
