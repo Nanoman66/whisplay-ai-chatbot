@@ -405,23 +405,29 @@ class ChatFlow implements ChatFlowContext {
 
   private handleIncomingMeshtasticMessage = (message: MeshTextMessage): void => {
     console.log("[Meshtastic] incoming message:", message);
-	
-	const routeTag: "DM" | "Ch" = message.to === "^all" ? "Ch" : "DM";
-	nicknameStore.touchNode(message.from);
-	
-	threadHistoryStore.appendIncoming({
-      fromNodeId: message.from,
-      fromDisplay: this.resolveIncomingSenderDisplay(message),
+
+    const routeTag: "DM" | "Ch" = message.to === "^all" ? "Ch" : "DM";
+    const fromNodeId = message.from ?? "!unknown";
+
+    nicknameStore.touchNode(fromNodeId);
+
+    const fromDisplay = nicknameStore.getDisplayLabel(fromNodeId);
+    const receivedAtDisplay = this.formatIncomingTimestamp(new Date());
+    const text = message.text?.trim() || "";
+
+    threadHistoryStore.appendIncoming({
+      fromNodeId,
+      fromDisplay,
       routeTag,
-      receivedAtDisplay: this.formatIncomingTimestamp(new Date()),
-      text: message.text?.trim() || "",
+      receivedAtDisplay,
+      text,
     });
 
     const displayMessage: IncomingDisplayMessage = {
-      fromDisplay: this.resolveIncomingSenderDisplay(message),
-	  routeTag,
-      receivedAtDisplay: this.formatIncomingTimestamp(new Date()),
-      text: message.text?.trim() || "",
+      fromDisplay,
+      routeTag,
+      receivedAtDisplay,
+      text,
     };
 
     this.incomingMessageQueue.push(displayMessage);

@@ -46,6 +46,16 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     if (ctx.appMode === "meshtastic") {
       let longPressTimer: NodeJS.Timeout | null = null;
       let longPressHandled = false;
+      let tapCount = 0;
+      let tapTimer: NodeJS.Timeout | null = null;
+
+      const resetTapState = () => {
+        tapCount = 0;
+        if (tapTimer) {
+          clearTimeout(tapTimer);
+          tapTimer = null;
+        }
+      };
 
       const renderHomeScreen = () => {
         ctx.initializeHomeSelection();
@@ -82,6 +92,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         longPressHandled = false;
         longPressTimer = setTimeout(() => {
           longPressHandled = true;
+          resetTapState();
           ctx.transitionTo("listening");
         }, 700);
       });
@@ -96,8 +107,23 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           return;
         }
 
-        ctx.cycleHomeSelection();
-        renderHomeScreen();
+        tapCount += 1;
+
+        if (tapCount === 1) {
+          tapTimer = setTimeout(() => {
+            if (tapCount === 1) {
+              ctx.cycleHomeSelection();
+              renderHomeScreen();
+            }
+            resetTapState();
+          }, 450);
+          return;
+        }
+
+        if (tapCount === 2) {
+          resetTapState();
+          ctx.transitionTo("thread_view");
+        }
       });
 
       onCameraModeExit(null);
@@ -532,6 +558,97 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
   renderReviewScreen();
 },
+
+  thread_view: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+    let tapCount = 0;
+    let tapTimer: NodeJS.Timeout | null = null;
+
+    ctx.resetThreadPage();
+
+    const resetTapState = () => {
+      tapCount = 0;
+      if (tapTimer) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
+      }
+    };
+
+    const renderThreadView = () => {
+      const title = ctx.getCurrentThreadTitle();
+      const messages = ctx.getCurrentThreadMessages();
+
+      const bodyText = messages.length
+        ? messages
+            .map((msg) => `${msg.headerText}\n${msg.bodyText}`)
+            .join("\n\n")
+        : "No messages yet.";
+
+      display({
+        status: title,
+        emoji: "",
+        top_center_text: "{time}",
+        RGB: "#000055",
+        rag_icon_visible: false,
+        header_text: "",
+        header_color: "#AAAAAA",
+        body_text: bodyText,
+        body_color: "#FFFFFF",
+        footer_text: buildFooterLegend({
+          single: "scroll",
+          double: "back",
+          long: "dictate",
+        }),
+        footer_color: FOOTER_LEGEND_COLOR,
+        body_frame_visible: true,
+        body_frame_color: "#444444",
+        text: bodyText,
+      });
+    };
+
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      longPressHandled = false;
+      longPressTimer = setTimeout(() => {
+        longPressHandled = true;
+        resetTapState();
+        ctx.transitionTo("listening");
+      }, 700);
+    });
+
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      tapCount += 1;
+
+      if (tapCount === 1) {
+        tapTimer = setTimeout(() => {
+          if (tapCount === 1) {
+            ctx.cycleThreadPage();
+            renderThreadView();
+          }
+          resetTapState();
+        }, 450);
+        return;
+      }
+
+      if (tapCount === 2) {
+        resetTapState();
+        ctx.transitionTo("sleep");
+      }
+    });
+
+    renderThreadView();
+  },
 
   incoming_message: (ctx: ChatFlowContext) => {
     if (!ctx.currentIncomingMessage) {
