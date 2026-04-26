@@ -14,13 +14,15 @@ import { WakeWordListener } from "../device/wakeword";
 import { WhisplayIMBridgeServer } from "../device/im-bridge";
 import { FlowStateMachine } from "./chat-flow/stateMachine";
 import { flowStates } from "./chat-flow/states";
-import { ChatFlowContext, FlowName, IncomingDisplayMessage } from "./chat-flow/types";
+import { ChatFlowContext, FlowName, IncomingDisplayMessage, ThreadDisplayMessage } from "./chat-flow/types";
 import { MeshtasticService } from "../meshtastic";
 import type { MeshTextMessage } from "../meshtastic";
 import { nicknameStore } from "../meshtastic/nicknameStore";
+import { threadHistoryStore } from "../meshtastic/threadHistory";
 import { playWakeupChime } from "../device/audio";
 import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
+
 
 dotEnv.config();
 
@@ -62,6 +64,7 @@ class ChatFlow implements ChatFlowContext {
   currentIncomingMessage: IncomingDisplayMessage | null = null;
   currentHomeSelectionId: string | null = null;
   currentOutgoingRecipientId: string | null = null;
+  currentThreadPage: number = 0;
     appMode: "chatbot" | "meshtastic" =
     (process.env.APP_MODE || "chatbot").toLowerCase() === "meshtastic"
       ? "meshtastic"
@@ -317,6 +320,62 @@ class ChatFlow implements ChatFlowContext {
     );
     return selected?.label || "Channel";
   };
+  
+    resetThreadPage = (): void => {
+    this.currentThreadPage = 0;
+  };
+
+  cycleThreadPage = (): void => {
+    const messages = threadHistoryStore.getThreadEntries(this.currentHomeSelectionId);
+    if (!messages.length) {
+      this.currentThreadPage = 0;
+      return;
+    }
+
+    const pageSize = 6;
+    const maxPage = Math.max(0, Math.ceil(messages.length / pageSize) - 1);
+    this.currentThreadPage = this.currentThreadPage >= maxPage ? 0 : this.currentThreadPage + 1;
+  };
+
+  getCurrentThreadMessages = (): ThreadDisplayMessage[] => {
+    const messages = threadHistoryStore.getThreadEntries(this.currentHomeSelectionId);
+    const pageSize = 6;
+    const total = messages.length;
+
+    if (!total) {
+      return [];
+    }
+
+    const endExclusive = total - this.currentThreadPage * pageSize;
+    const startInclusive = Math.max(0, endExclusive - pageSize);
+
+    return messages
+      .slice(startInclusive, Math.max(startInclusive, endExclusive))
+      .map((entry) => ({
+        headerText: entry.headerText,
+        headerColor: entry.headerColor,
+        headerAlign: entry.headerAlign,
+        bodyText: entry.bodyText,
+        bodyColor: entry.bodyColor,
+      }));
+  };
+
+  getCurrentThreadTitle = (): string => {
+    const selected = this.getMeshtasticContactOptions().find(
+      (option) => option.nodeId === this.currentHomeSelectionId,
+    );
+    return selected?.label || "Channel";
+  };
+
+  appendOutgoingThreadMessage = (text: string, toNodeId: string | null): void => {
+    threadHistoryStore.appendOutgoing({
+      toNodeId,
+      routeTag: toNodeId ? "DM" : "Ch",
+      sentAtDisplay: this.formatIncomingTimestamp(new Date()),
+      text,
+      senderLabel: "You",
+    });
+  };
 
   private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
@@ -349,6 +408,14 @@ class ChatFlow implements ChatFlowContext {
 	
 	const routeTag: "DM" | "Ch" = message.to === "^all" ? "Ch" : "DM";
 	nicknameStore.touchNode(message.from);
+	
+	threadHistoryStore.appendIncoming({
+      fromNodeId: message.from,
+      fromDisplay: this.resolveIncomingSenderDisplay(message),
+      routeTag,
+      receivedAtDisplay: this.formatIncomingTimestamp(new Date()),
+      text: message.text?.trim() || "",
+    });
 
     const displayMessage: IncomingDisplayMessage = {
       fromDisplay: this.resolveIncomingSenderDisplay(message),
