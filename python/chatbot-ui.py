@@ -28,8 +28,9 @@ scroll_stop_event = threading.Event()
 status_font_size=14
 emoji_font_size=40
 battery_font_size=13
+home_body_font_size=20
 message_header_font_size=16
-message_body_font_size=20
+message_body_font_size=18
 message_header_min_font_size=12
 message_footer_font_size=15
 message_footer_min_font_size=12
@@ -216,7 +217,7 @@ class RenderThread(threading.Thread):
         global current_header_text, current_header_color, current_body_text, current_body_color
         global current_footer_text, current_footer_color
         global current_body_frame_visible, current_body_frame_color
-        global message_header_font_size, message_body_font_size, message_header_min_font_size
+        global home_body_font_size, message_header_font_size, message_body_font_size, message_header_min_font_size
         global message_footer_font_size, message_footer_min_font_size
 
         header_text = (current_header_text or "").strip()
@@ -229,10 +230,11 @@ class RenderThread(threading.Thread):
         header_margin_x = 10
         body_margin_x = 10
         top_padding = 4
-        header_body_gap = 6
+        header_body_gap = 3
         body_footer_gap = 6
 
-        body_font = ImageFont.truetype(self.font_path, message_body_font_size)
+        active_body_font_size = message_body_font_size if header_text else home_body_font_size
+        body_font = ImageFont.truetype(self.font_path, active_body_font_size)
         body_line_height = body_font.getmetrics()[0] + body_font.getmetrics()[1]
 
         header_font_size = message_header_font_size
