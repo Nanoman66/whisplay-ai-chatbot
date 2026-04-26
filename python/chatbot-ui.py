@@ -209,13 +209,16 @@ class RenderThread(threading.Thread):
         global current_scroll_sync_duration_ms, current_scroll_sync_target_top
         global current_scroll_sync_speed, current_scroll_sync_hold_until
         global current_header_text, current_header_color, current_body_text, current_body_color
+        global current_footer_text, current_footer_color
         global current_body_frame_visible, current_body_frame_color
         global message_header_font_size, message_body_font_size, message_header_min_font_size
+        global message_footer_font_size, message_footer_min_font_size
 
         header_text = (current_header_text or "").strip()
         body_text = current_body_text if current_body_text not in [None, ""] else text
+        footer_text = (current_footer_text or "").strip()
 
-        if not body_text and not header_text:
+        if not body_text and not header_text and not footer_text:
             return
 
         header_margin_x = 10
@@ -228,6 +231,9 @@ class RenderThread(threading.Thread):
 
         header_font_size = message_header_font_size
         header_font = ImageFont.truetype(self.font_path, header_font_size)
+
+        footer_font_size = message_footer_font_size
+        footer_font = ImageFont.truetype(self.font_path, footer_font_size)
 
         if header_text:
             max_header_width = self.whisplay.LCD_WIDTH - 2 * header_margin_x
@@ -242,12 +248,30 @@ class RenderThread(threading.Thread):
             header_line_height = header_font.getmetrics()[0] + header_font.getmetrics()[1]
         else:
             header_line_height = 0
+            
+        if footer_text:
+            max_footer_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
+            while footer_font_size > message_footer_min_font_size:
+                bbox = footer_font.getbbox(footer_text)
+                footer_width = bbox[2] - bbox[0]
+                if footer_width <= max_footer_width:
+                    break
+                footer_font_size -= 1
+                footer_font = ImageFont.truetype(self.font_path, footer_font_size)
+
+            footer_line_height = footer_font.getmetrics()[0] + footer_font.getmetrics()[1]
+        else:
+            footer_line_height = 0
 
         body_top = top_padding
         if header_text:
             body_top += header_line_height + section_gap
 
-        body_area_height = max(0, area_height - body_top)
+        footer_reserved_height = 0
+        if footer_text:
+            footer_reserved_height = footer_line_height + section_gap + 4
+
+        body_area_height = max(0, area_height - body_top - footer_reserved_height)
         if body_area_height <= 0:
             return
 
@@ -281,8 +305,9 @@ class RenderThread(threading.Thread):
             current_scroll_sync_duration_ms = None
 
         if current_body_frame_visible:
+            frame_bottom = area_height - footer_reserved_height - 5
             draw.rounded_rectangle(
-                [8, 4, self.whisplay.LCD_WIDTH - 5, area_height - 5],
+                [8, 4, self.whisplay.LCD_WIDTH - 9, frame_bottom],
                 radius=4,
                 outline=current_body_frame_color,
                 width=1,
@@ -298,6 +323,17 @@ class RenderThread(threading.Thread):
                 fill=current_header_color,
             )
 
+        if footer_text:
+            footer_y = area_height - footer_line_height - 4
+            TextUtils.draw_mixed_text(
+                draw,
+                main_text_image,
+                footer_text,
+                footer_font,
+                (body_margin_x, footer_y),
+                fill=current_footer_color,
+            )
+
         display_lines = []
         render_y = 0
         fin_show_lines = False
@@ -309,8 +345,8 @@ class RenderThread(threading.Thread):
                 render_y += line_height
 
         render_text = "".join(display_lines)
-        if self.current_render_text != f"{header_text}\n{render_text}":
-            self.current_render_text = f"{header_text}\n{render_text}"
+        if self.current_render_text != f"{header_text}\n{render_text}\n{footer_text}":
+            self.current_render_text = f"{header_text}\n{render_text}\n{footer_text}"
             show_text_image = Image.new(
                 "RGBA",
                 (self.whisplay.LCD_WIDTH, body_top + render_y + len(display_lines) * line_height),
@@ -504,12 +540,14 @@ class RenderThread(threading.Thread):
 def update_display_data(status=None, emoji=None, text=None,
                   top_center_text=None,
                   header_text=None, header_color=None, body_text=None, body_color=None,
+                  footer_text=None, footer_color=None,
                   body_frame_visible=None, body_frame_color=None,
                   scroll_speed=None, scroll_sync=None, battery_level=None, battery_color=None, image_path=None,
                   network_connected=None, vpn_connected=None, rag_icon_visible=None, image_icon_visible=None, transaction_id=None,
                   music_progress=None, music_duration_ms=None):
     global current_top_center_text
     global current_header_text, current_header_color, current_body_text, current_body_color
+    global current_footer_text, current_footer_color
     global current_body_frame_visible, current_body_frame_color
     global current_status, current_emoji, current_text, current_battery_level
     global current_battery_color, current_scroll_top, current_scroll_speed, current_image_path
@@ -598,6 +636,10 @@ def update_display_data(status=None, emoji=None, text=None,
         current_body_text = body_text
     if body_color is not None:
         current_body_color = ColorUtils.get_rgb255_from_any(body_color)
+    if footer_text is not None:
+        current_footer_text = footer_text
+    if footer_color is not None:
+        current_footer_color = ColorUtils.get_rgb255_from_any(footer_color)
     if body_frame_visible is not None:
         current_body_frame_visible = bool(body_frame_visible)
     if body_frame_color is not None:
@@ -678,6 +720,8 @@ def handle_client(client_socket, addr, whisplay):
                     header_color = content.get("header_color", None)
                     body_text = content.get("body_text", None)
                     body_color = content.get("body_color", None)
+                    footer_text = content.get("footer_text", None)
+                    footer_color = content.get("footer_color", None)
                     body_frame_visible = content.get("body_frame_visible", None)
                     body_frame_color = content.get("body_frame_color", None)
                     rgbled = content.get("RGB", None)
@@ -737,6 +781,7 @@ def handle_client(client_socket, addr, whisplay):
                     if (text is not None) or (top_center_text is not None) or \
                        (header_text is not None) or (header_color is not None) or \
                        (body_text is not None) or (body_color is not None) or \
+                       (footer_text is not None) or (footer_color is not None) or \
                        (body_frame_visible is not None) or (body_frame_color is not None) or \
                        (status is not None) or (emoji is not None) or \
                        (battery_level is not None) or (battery_color is not None) or \
@@ -749,6 +794,7 @@ def handle_client(client_socket, addr, whisplay):
                                      top_center_text=top_center_text,
                                      header_text=header_text, header_color=header_color,
                                      body_text=body_text, body_color=body_color,
+                                     footer_text=footer_text, footer_color=footer_color,
                                      body_frame_visible=body_frame_visible, body_frame_color=body_frame_color,
                                      scroll_speed=scroll_speed, scroll_sync=scroll_sync,
                                      battery_level=battery_level, battery_color=battery_tuple,

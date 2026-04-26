@@ -413,6 +413,8 @@ class ChatFlow implements ChatFlowContext {
       header_color: "#AAAAAA",
       body_text: "",
       body_color: "#FFFFFF",
+      footer_text: "",
+      footer_color: "#AAAAAA",
       body_frame_visible: false,
       body_frame_color: "#444444",
     });
