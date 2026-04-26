@@ -25,7 +25,7 @@ from wireguard_icon import WireguardStatusIcon
 scroll_thread = None
 scroll_stop_event = threading.Event()
 
-status_font_size=20
+status_font_size=14
 emoji_font_size=40
 battery_font_size=13
 message_header_font_size=16
@@ -282,7 +282,7 @@ class RenderThread(threading.Thread):
 
         if current_body_frame_visible:
             draw.rounded_rectangle(
-                [4, 4, self.whisplay.LCD_WIDTH - 5, area_height - 5],
+                [8, 4, self.whisplay.LCD_WIDTH - 5, area_height - 5],
                 radius=4,
                 outline=current_body_frame_color,
                 width=1,

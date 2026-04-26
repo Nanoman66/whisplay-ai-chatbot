@@ -90,8 +90,8 @@ export class MeshtasticService {
     this.bridgeProcess.stop();
   }
 
-  async sendText(text: string) {
-    return this.client.sendText(text);
+  async sendText(text: string, destinationId?: string | null) {
+    return this.client.sendText(text, destinationId);
   }
 
   onIncomingMessage(handler: (message: MeshTextMessage) => void): void {

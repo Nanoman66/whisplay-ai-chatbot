@@ -63,7 +63,7 @@ export class MeshtasticClient {
     this.state = "disconnected";
   }
 
-  async sendText(text: string): Promise<MeshSendResult> {
+  async sendText(text: string, destinationId?: string | null): Promise<MeshSendResult> {
     if (!meshtasticConfig.enabled) {
       return { ok: false, error: "Meshtastic mode is disabled." };
     }
@@ -73,13 +73,19 @@ export class MeshtasticClient {
     }
 
     try {
+      const requestBody: Record<string, unknown> = {
+        text,
+        channelIndex: meshtasticConfig.channelIndex,
+      };
+
+      if (destinationId) {
+        requestBody.destinationId = destinationId;
+      }
+
       const response = await fetch(`${this.baseUrl}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          channelIndex: meshtasticConfig.channelIndex,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const body = await response.json();

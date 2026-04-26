@@ -51,6 +51,7 @@ export interface ChatFlowContext {
   appMode: "chatbot" | "meshtastic";
   meshtasticService: MeshtasticService | null;
   currentHomeSelectionId: string | null;
+  currentOutgoingRecipientId: string | null;
   incomingMessageQueue: IncomingDisplayMessage[];
   currentIncomingMessage: IncomingDisplayMessage | null;
 
@@ -65,5 +66,8 @@ export interface ChatFlowContext {
   initializeHomeSelection: () => void;
   cycleHomeSelection: () => void;
   getHomeContactListText: () => string;
+  initializeOutgoingRecipientSelection: () => void;
+  cycleOutgoingRecipient: () => void;
+  getOutgoingRecipientLabel: () => string;
   streamExternalReply: (text: string, emoji?: string) => Promise<void>;
 }

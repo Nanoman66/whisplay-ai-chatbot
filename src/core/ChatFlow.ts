@@ -61,6 +61,7 @@ class ChatFlow implements ChatFlowContext {
   incomingMessageQueue: IncomingDisplayMessage[] = [];
   currentIncomingMessage: IncomingDisplayMessage | null = null;
   currentHomeSelectionId: string | null = null;
+  currentOutgoingRecipientId: string | null = null;
     appMode: "chatbot" | "meshtastic" =
     (process.env.APP_MODE || "chatbot").toLowerCase() === "meshtastic"
       ? "meshtastic"
@@ -284,6 +285,37 @@ class ChatFlow implements ChatFlowContext {
       const marker = absoluteIndex === normalizedSelectedIndex ? "›" : " ";
       return `${marker} ${option.label}`;
     }).join("\n");
+  };
+  
+    initializeOutgoingRecipientSelection = (): void => {
+    const options = this.getMeshtasticContactOptions();
+    const preferred = this.currentHomeSelectionId;
+    const preferredExists = options.some(
+      (option) => option.nodeId === preferred,
+    );
+
+    this.currentOutgoingRecipientId = preferredExists ? preferred : null;
+  };
+
+  cycleOutgoingRecipient = (): void => {
+    const options = this.getMeshtasticContactOptions();
+    if (!options.length) {
+      this.currentOutgoingRecipientId = null;
+      return;
+    }
+
+    const currentIndex = options.findIndex(
+      (option) => option.nodeId === this.currentOutgoingRecipientId,
+    );
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % options.length : 0;
+    this.currentOutgoingRecipientId = options[nextIndex].nodeId;
+  };
+
+  getOutgoingRecipientLabel = (): string => {
+    const selected = this.getMeshtasticContactOptions().find(
+      (option) => option.nodeId === this.currentOutgoingRecipientId,
+    );
+    return selected?.label || "Channel";
   };
 
   private formatIncomingTimestamp = (date: Date): string => {

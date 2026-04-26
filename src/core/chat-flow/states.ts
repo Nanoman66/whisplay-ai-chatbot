@@ -369,6 +369,24 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   let tapTimer: NodeJS.Timeout | null = null;
   let isSending = false;
 
+  ctx.initializeOutgoingRecipientSelection();
+
+  const renderReviewScreen = () => {
+    const recipientLabel = ctx.getOutgoingRecipientLabel();
+
+    display({
+      status: "review",
+      emoji: "📝",
+      RGB: "#ffaa00",
+      header_text: `To: ${recipientLabel}`,
+      header_color: "#00c8a3",
+      body_text: ctx.asrText,
+      body_color: "#FFFFFF",
+      text: `To: ${recipientLabel}\n${ctx.asrText}`,
+      rag_icon_visible: false,
+    });
+  };
+
   const resetTapState = () => {
     tapCount = 0;
     if (tapTimer) {
@@ -416,7 +434,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       return;
     }
 
-    const result = await ctx.meshtasticService.sendText(ctx.asrText);
+    const result = await ctx.meshtasticService.sendText(
+      ctx.asrText,
+      ctx.currentOutgoingRecipientId,
+    );
 
     if (result.ok) {
       display({
@@ -466,6 +487,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     if (tapCount === 1) {
       tapTimer = setTimeout(() => {
+        if (tapCount === 1) {
+          ctx.cycleOutgoingRecipient();
+          renderReviewScreen();
+        }
         resetTapState();
       }, 700);
       return;
@@ -476,18 +501,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     }
   });
 
-  display({
-    status: "review",
-    emoji: "📝",
-    RGB: "#ffaa00",
-    header_text: "Review message",
-    header_color: "#00c8a3",
-    body_text: ctx.asrText,
-    body_color: "#FFFFFF",
-    text: ctx.asrText,
-    rag_icon_visible: false,
-  });
-}, 
+  renderReviewScreen();
+},
 
   incoming_message: (ctx: ChatFlowContext) => {
     if (!ctx.currentIncomingMessage) {
