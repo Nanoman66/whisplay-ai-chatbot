@@ -91,6 +91,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
         longPressHandled = false;
         longPressTimer = setTimeout(() => {
+          if (!isButtonDown()) {
+            return;
+          }
           longPressHandled = true;
           resetTapState();
           ctx.transitionTo("listening");
@@ -270,40 +273,71 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     ctx.wakeSessionActive = false;
     ctx.endAfterAnswer = false;
     onButtonDoubleClick(null);
-    ctx.currentRecordFilePath = `${ctx.recordingsDir
-      }/user-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = `${ctx.recordingsDir}/user-${Date.now()}.${recordFileFormat}`;
     onButtonPressed(noop);
+
     const listeningStartedAt = Date.now();
-    // If button was already released before we entered this state, go back to sleep
+
     if (!isButtonDown()) {
       console.log("[listening] Button already released, returning to sleep");
       ctx.transitionTo("sleep");
       return;
     }
+
+    let releaseHandled = false;
+    let releaseWatchdog: NodeJS.Timeout | null = null;
+
+    const clearReleaseWatchdog = () => {
+      if (releaseWatchdog) {
+        clearInterval(releaseWatchdog);
+        releaseWatchdog = null;
+      }
+    };
+
     const { result, stop } = recordAudioManually(ctx.currentRecordFilePath);
+
     const handleRelease = () => {
+      if (releaseHandled) {
+        return;
+      }
+
+      releaseHandled = true;
+      clearReleaseWatchdog();
+
       if (Date.now() - listeningStartedAt < 500) {
-        // Too short to be meaningful — stop recording and return to sleep
         console.log("[listening] Button released too quickly, returning to sleep");
         stop();
         ctx.transitionTo("sleep");
         return;
       }
+
       stop();
       display({
         RGB: "#ff6800",
         image: "",
       });
     };
+
     onButtonReleased(handleRelease);
+
+    releaseWatchdog = setInterval(() => {
+      if (!releaseHandled && !isButtonDown()) {
+        console.log("[listening] Release watchdog fired");
+        handleRelease();
+      }
+    }, 75);
+
     result
       .then(() => {
+        clearReleaseWatchdog();
         ctx.transitionTo("asr");
       })
       .catch((err) => {
+        clearReleaseWatchdog();
         console.error("Error during recording:", err);
         ctx.transitionTo("sleep");
       });
+
     display({
       status: "listening",
       emoji: DEFAULT_EMOJI,
@@ -519,8 +553,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
   onButtonPressed(() => {
     if (isSending) return;
-    longPressHandled = false;
     longPressTimer = setTimeout(() => {
+      if (!isButtonDown()) {
+        return;
+      }
       longPressHandled = true;
       discardAndReturnToSleep();
     }, 1200);
@@ -611,11 +647,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonPressed(() => {
       longPressHandled = false;
-      longPressTimer = setTimeout(() => {
-        longPressHandled = true;
-        resetTapState();
-        ctx.transitionTo("listening");
-      }, 700);
+        longPressTimer = setTimeout(() => {
+          if (!isButtonDown()) {
+            return;
+          }
+          longPressHandled = true;
+          resetTapState();
+          ctx.transitionTo("listening");
+        }, 700);
     });
 
     onButtonReleased(() => {

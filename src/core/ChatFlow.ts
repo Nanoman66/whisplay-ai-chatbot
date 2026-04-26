@@ -408,6 +408,7 @@ class ChatFlow implements ChatFlowContext {
 
     const routeTag: "DM" | "Ch" = message.to === "^all" ? "Ch" : "DM";
     const fromNodeId = message.from ?? "!unknown";
+    const incomingThreadId = routeTag === "Ch" ? null : fromNodeId;
 
     nicknameStore.touchNode(fromNodeId);
 
@@ -430,10 +431,30 @@ class ChatFlow implements ChatFlowContext {
       text,
     };
 
+    const isBusy = [
+      "listening",
+      "asr",
+      "review_outgoing",
+      "incoming_message",
+    ].includes(this.currentFlowName);
+
+    const isViewingSameThread =
+      this.currentFlowName === "thread_view" &&
+      this.currentHomeSelectionId === incomingThreadId;
+
+    if (isViewingSameThread) {
+      this.resetThreadPage();
+      this.transitionTo("thread_view");
+      return;
+    }
+
     this.incomingMessageQueue.push(displayMessage);
 
-    if (this.currentFlowName === "sleep" && !this.currentIncomingMessage) {
-      this.showNextIncomingMessage();
+    if (!isBusy && !this.currentIncomingMessage) {
+      this.currentIncomingMessage = this.incomingMessageQueue.shift() || null;
+      if (this.currentIncomingMessage) {
+        this.transitionTo("incoming_message");
+      }
     }
   };
 
