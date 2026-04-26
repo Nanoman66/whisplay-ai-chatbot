@@ -8,7 +8,7 @@ export const FOOTER_LEGEND_COLOR = "#ff5555";
 
 const SINGLE_GLYPH = "+";
 const DOUBLE_GLYPH = "++";
-const LONG_GLYPH = "_ =";
+const LONG_GLYPH = "-";
 const SEGMENT_GAP = "  ";
 
 function normalizeLabel(label?: string): string | null {
