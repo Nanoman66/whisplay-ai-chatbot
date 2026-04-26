@@ -1,4 +1,4 @@
-import { ChildProcess, exec, execSync } from "child_process";
+import { ChildProcess, exec, spawnSync } from "child_process";
 import { resolve } from "path";
 import { Socket } from "net";
 import { getCurrentTimeTag } from "../utils";
@@ -164,12 +164,19 @@ export class WhisplayDisplay {
       return;
     }
 
-    try {
-      execSync('pkill -f "python3 chatbot-ui.py" >/dev/null 2>&1 || true', {
-        stdio: "ignore",
-      });
-    } catch (error) {
-      console.warn("[WhisplayDisplay] stale chatbot-ui cleanup failed:", error);
+    const result = spawnSync("pkill", ["-TERM", "-f", "chatbot-ui.py"], {
+      stdio: "ignore",
+    });
+
+    if (result.error) {
+      console.warn("[WhisplayDisplay] stale chatbot-ui cleanup failed:", result.error);
+      return;
+    }
+
+    if (typeof result.status === "number" && ![0, 1].includes(result.status)) {
+      console.warn(
+        `[WhisplayDisplay] stale chatbot-ui cleanup returned unexpected status ${result.status}.`,
+      );
     }
   }
 
