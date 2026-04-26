@@ -325,12 +325,16 @@ class RenderThread(threading.Thread):
 
         if footer_text:
             footer_y = area_height - footer_line_height - 4
+            footer_bbox = footer_font.getbbox(footer_text)
+            footer_width = footer_bbox[2] - footer_bbox[0]
+            footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
+
             TextUtils.draw_mixed_text(
                 draw,
                 main_text_image,
                 footer_text,
                 footer_font,
-                (body_margin_x, footer_y),
+                (footer_x, footer_y),
                 fill=current_footer_color,
             )
 
