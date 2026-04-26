@@ -211,20 +211,70 @@ class TextUtils:
 
   @staticmethod
   def wrap_text(draw, text, font, max_width):
+    def line_width(value):
+      return TextUtils.get_line_img(value, font).width
+
+    def break_long_word(word):
+      parts = []
+      remaining = word
+      hyphen = "-"
+
+      while remaining and line_width(remaining) > max_width:
+        chunk = ""
+
+        for char in remaining:
+          candidate = chunk + char
+          # Reserve space for a hyphen because more of the word remains
+          if line_width(candidate + hyphen) <= max_width:
+            chunk = candidate
+          else:
+            break
+
+        # Pathological safety case for extremely narrow widths
+        if not chunk:
+          chunk = remaining[0]
+
+        parts.append(chunk + hyphen)
+        remaining = remaining[len(chunk):]
+
+      if remaining:
+        parts.append(remaining)
+
+      return parts
+
     lines = []
-    current_line = ""
-    current_width = 0
-    for char in text:
-      test_line = current_line + char
-      char_width = TextUtils.get_char_size(font, char)[0]
-      current_width += char_width
-      w = current_width
-      if w <= max_width:
-        current_line = test_line
-      else:
+
+    for raw_line in text.split("\n"):
+      if raw_line == "":
+        lines.append("")
+        continue
+
+      words = raw_line.split(" ")
+      current_line = ""
+
+      for word in words:
+        if line_width(word) > max_width:
+          if current_line:
+            lines.append(current_line)
+            current_line = ""
+
+          broken_parts = break_long_word(word)
+
+          for part in broken_parts[:-1]:
+            lines.append(part)
+
+          current_line = broken_parts[-1]
+          continue
+
+        test_line = word if current_line == "" else f"{current_line} {word}"
+
+        if current_line == "" or line_width(test_line) <= max_width:
+          current_line = test_line
+        else:
+          lines.append(current_line)
+          current_line = word
+
+      if current_line:
         lines.append(current_line)
-        current_line = char
-        current_width = char_width
-    if current_line:
-      lines.append(current_line)
+
     return lines
