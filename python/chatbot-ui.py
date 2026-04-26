@@ -35,6 +35,11 @@ message_header_min_font_size=12
 message_footer_font_size=15
 message_footer_min_font_size=12
 
+thread_header_font_size=12
+thread_body_font_size=14
+thread_header_body_gap=2
+thread_message_gap=6
+
 # Global variables
 current_status = "Hello"
 current_emoji = "😄"
@@ -44,6 +49,7 @@ current_header_text = ""
 current_header_color = (170, 170, 170, 255)
 current_body_text = ""
 current_body_color = (255, 255, 255, 255)
+current_thread_messages = []
 current_footer_text = ""
 current_footer_color = (170, 170, 170, 255)
 current_body_frame_visible = False
@@ -215,10 +221,12 @@ class RenderThread(threading.Thread):
         global current_scroll_sync_duration_ms, current_scroll_sync_target_top
         global current_scroll_sync_speed, current_scroll_sync_hold_until
         global current_header_text, current_header_color, current_body_text, current_body_color
+        global current_thread_messages
         global current_footer_text, current_footer_color
         global current_body_frame_visible, current_body_frame_color
         global home_body_font_size, message_header_font_size, message_body_font_size, message_header_min_font_size
         global message_footer_font_size, message_footer_min_font_size
+        global thread_header_font_size, thread_body_font_size, thread_header_body_gap, thread_message_gap
 
         header_text = (current_header_text or "").strip()
         body_text = current_body_text if current_body_text not in [None, ""] else text
@@ -258,29 +266,87 @@ class RenderThread(threading.Thread):
             header_line_height = 0
             
         if footer_text:
-            max_footer_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
-            while footer_font_size > message_footer_min_font_size:
-                bbox = footer_font.getbbox(footer_text)
-                footer_width = bbox[2] - bbox[0]
-                if footer_width <= max_footer_width:
+            footer_y = area_height - footer_line_height - 4
+            footer_img = TextUtils.get_line_img(
+                footer_text,
+                footer_font,
+                current_footer_color,
+            )
+            footer_width = footer_img.width
+            footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
+
+            main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
+
+        if current_thread_messages:
+            thread_header_font = ImageFont.truetype(self.font_path, thread_header_font_size)
+            thread_body_font = ImageFont.truetype(self.font_path, thread_body_font_size)
+
+            thread_header_line_height = thread_header_font.getmetrics()[0] + thread_header_font.getmetrics()[1]
+            thread_body_line_height = thread_body_font.getmetrics()[0] + thread_body_font.getmetrics()[1]
+
+            content_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
+            content_y = body_top
+            body_bottom = body_top + body_area_height
+
+            for item in current_thread_messages:
+                header_text_value = (item.get("headerText") or "").strip()
+                header_color_value = ColorUtils.get_rgb255_from_any(item.get("headerColor")) or current_header_color
+                header_align_value = item.get("headerAlign") or "left"
+                body_text_value = item.get("bodyText") or ""
+                body_color_value = ColorUtils.get_rgb255_from_any(item.get("bodyColor")) or current_body_color
+
+                if header_text_value:
+                    header_img = TextUtils.get_line_img(
+                        header_text_value,
+                        thread_header_font,
+                        header_color_value,
+                    )
+                    if header_align_value == "right":
+                        header_x = max(body_margin_x, self.whisplay.LCD_WIDTH - body_margin_x - header_img.width)
+                    else:
+                        header_x = body_margin_x
+
+                    if content_y + header_img.height > body_bottom:
+                        break
+
+                    main_text_image.paste(header_img, (header_x, content_y), header_img)
+                    content_y += thread_header_line_height + thread_header_body_gap
+
+                if body_text_value:
+                    wrapped_thread_lines = []
+                    for paragraph in body_text_value.split("\n"):
+                        if paragraph == "":
+                            wrapped_thread_lines.append("")
+                        else:
+                            wrapped_thread_lines.extend(
+                                TextUtils.wrap_text(
+                                    draw,
+                                    paragraph,
+                                    thread_body_font,
+                                    content_width,
+                                )
+                            )
+
+                    for line in wrapped_thread_lines:
+                        if content_y + thread_body_line_height > body_bottom:
+                            return
+
+                        if line:
+                            TextUtils.draw_mixed_text(
+                                draw,
+                                main_text_image,
+                                line,
+                                thread_body_font,
+                                (body_margin_x, content_y),
+                                fill=body_color_value,
+                            )
+                        content_y += thread_body_line_height
+
+                content_y += thread_message_gap
+
+                if content_y >= body_bottom:
                     break
-                footer_font_size -= 1
-                footer_font = ImageFont.truetype(self.font_path, footer_font_size)
 
-            footer_line_height = footer_font.getmetrics()[0] + footer_font.getmetrics()[1]
-        else:
-            footer_line_height = 0
-
-        body_top = top_padding
-        if header_text:
-            body_top += header_line_height + header_body_gap
-
-        footer_reserved_height = 0
-        if footer_text:
-            footer_reserved_height = footer_line_height + body_footer_gap + 4
-
-        body_area_height = max(0, area_height - body_top - footer_reserved_height)
-        if body_area_height <= 0:
             return
 
         lines = []
@@ -549,7 +615,7 @@ class RenderThread(threading.Thread):
 
 def update_display_data(status=None, emoji=None, text=None,
                   top_center_text=None,
-                  header_text=None, header_color=None, body_text=None, body_color=None,
+                  header_text=None, header_color=None, body_text=None, body_color=None, thread_messages=None,
                   footer_text=None, footer_color=None,
                   body_frame_visible=None, body_frame_color=None,
                   scroll_speed=None, scroll_sync=None, battery_level=None, battery_color=None, image_path=None,
@@ -557,6 +623,7 @@ def update_display_data(status=None, emoji=None, text=None,
                   music_progress=None, music_duration_ms=None):
     global current_top_center_text
     global current_header_text, current_header_color, current_body_text, current_body_color
+    global current_thread_messages
     global current_footer_text, current_footer_color
     global current_body_frame_visible, current_body_frame_color
     global current_status, current_emoji, current_text, current_battery_level
@@ -646,6 +713,10 @@ def update_display_data(status=None, emoji=None, text=None,
         current_body_text = body_text
     if body_color is not None:
         current_body_color = ColorUtils.get_rgb255_from_any(body_color)
+    if thread_messages is not None:
+        current_thread_messages = thread_messages
+    elif body_text is not None:
+        current_thread_messages = []
     if footer_text is not None:
         current_footer_text = footer_text
     if footer_color is not None:
@@ -730,6 +801,7 @@ def handle_client(client_socket, addr, whisplay):
                     header_color = content.get("header_color", None)
                     body_text = content.get("body_text", None)
                     body_color = content.get("body_color", None)
+                    thread_messages = content.get("thread_messages", None)
                     footer_text = content.get("footer_text", None)
                     footer_color = content.get("footer_color", None)
                     body_frame_visible = content.get("body_frame_visible", None)
@@ -791,6 +863,7 @@ def handle_client(client_socket, addr, whisplay):
                     if (text is not None) or (top_center_text is not None) or \
                        (header_text is not None) or (header_color is not None) or \
                        (body_text is not None) or (body_color is not None) or \
+                       (thread_messages is not None) or \
                        (footer_text is not None) or (footer_color is not None) or \
                        (body_frame_visible is not None) or (body_frame_color is not None) or \
                        (status is not None) or (emoji is not None) or \
@@ -804,6 +877,7 @@ def handle_client(client_socket, addr, whisplay):
                                      top_center_text=top_center_text,
                                      header_text=header_text, header_color=header_color,
                                      body_text=body_text, body_color=body_color,
+                                     thread_messages=thread_messages,
                                      footer_text=footer_text, footer_color=footer_color,
                                      body_frame_visible=body_frame_visible, body_frame_color=body_frame_color,
                                      scroll_speed=scroll_speed, scroll_sync=scroll_sync,

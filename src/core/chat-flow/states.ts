@@ -615,11 +615,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       const title = ctx.getCurrentThreadTitle();
       const messages = ctx.getCurrentThreadMessages();
 
-      const bodyText = messages.length
-        ? messages
-            .map((msg) => `${msg.headerText}\n${msg.bodyText}`)
-            .join("\n\n")
-        : "No messages yet.";
+      const bodyText = messages.length ? "" : "No messages yet.";
 
       display({
         status: title,
@@ -631,6 +627,13 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         header_color: "#AAAAAA",
         body_text: bodyText,
         body_color: "#FFFFFF",
+        thread_messages: messages.map((msg) => ({
+          headerText: msg.headerText,
+          headerColor: msg.headerColor,
+          headerAlign: msg.headerAlign,
+          bodyText: msg.bodyText,
+          bodyColor: msg.bodyColor,
+        })),
         footer_text: buildFooterLegend({
           single: "scroll",
           double: "back",
@@ -639,7 +642,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         footer_color: FOOTER_LEGEND_COLOR,
         body_frame_visible: true,
         body_frame_color: "#444444",
-        text: bodyText,
+        text: bodyText || messages.map((msg) => `${msg.headerText}\n${msg.bodyText}`).join("\n\n"),
       });
     };
 

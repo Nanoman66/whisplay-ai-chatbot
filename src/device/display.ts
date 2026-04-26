@@ -8,6 +8,14 @@ import dotEnv from "dotenv";
 
 dotEnv.config();
 
+export interface ThreadRenderMessage {
+  headerText: string;
+  headerColor: string;
+  headerAlign: "left" | "right";
+  bodyText: string;
+  bodyColor: string;
+}
+
 export interface Status {
   status: string;
   emoji: string;
@@ -17,6 +25,7 @@ export interface Status {
   header_color: string;
   body_text: string;
   body_color: string;
+  thread_messages: ThreadRenderMessage[];
   footer_text: string;
   footer_color: string;
   body_frame_visible: boolean;
@@ -53,6 +62,7 @@ export class WhisplayDisplay {
     header_color: "#AAAAAA",
     body_text: "",
     body_color: "#FFFFFF",
+    thread_messages: [],
     footer_text: "",
     footer_color: "#AAAAAA",
     body_frame_visible: false,
@@ -442,6 +452,10 @@ export class WhisplayDisplay {
       }
     }
 
+    if (!Object.prototype.hasOwnProperty.call(normalizedStatus, "thread_messages")) {
+      normalizedStatus.thread_messages = [];
+    }
+
     const {
       status,
       emoji,
@@ -451,6 +465,7 @@ export class WhisplayDisplay {
       header_color,
       body_text,
       body_color,
+      thread_messages,
       footer_text,
       footer_color,
       body_frame_visible,
@@ -490,6 +505,7 @@ export class WhisplayDisplay {
     this.currentStatus.header_color = header_color;
     this.currentStatus.body_text = body_text;
     this.currentStatus.body_color = body_color;
+    this.currentStatus.thread_messages = thread_messages;
     this.currentStatus.footer_text = footer_text;
     this.currentStatus.footer_color = footer_color;
     this.currentStatus.body_frame_visible = body_frame_visible;
