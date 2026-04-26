@@ -463,6 +463,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     );
 
     if (result.ok) {
+      ctx.appendOutgoingThreadMessage(ctx.asrText, ctx.currentOutgoingRecipientId);
+
       display({
         status: "sent",
         emoji: "✅",
