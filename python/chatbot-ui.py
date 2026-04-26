@@ -232,7 +232,7 @@ class RenderThread(threading.Thread):
         body_text = current_body_text if current_body_text not in [None, ""] else text
         footer_text = (current_footer_text or "").strip()
 
-        if not body_text and not header_text and not footer_text:
+        if not body_text and not header_text and not footer_text and not current_thread_messages:
             return
 
         header_margin_x = 10
@@ -264,7 +264,53 @@ class RenderThread(threading.Thread):
             header_line_height = header_font.getmetrics()[0] + header_font.getmetrics()[1]
         else:
             header_line_height = 0
-            
+
+        if footer_text:
+            max_footer_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
+            while footer_font_size > message_footer_min_font_size:
+                bbox = footer_font.getbbox(footer_text)
+                footer_width = bbox[2] - bbox[0]
+                if footer_width <= max_footer_width:
+                    break
+                footer_font_size -= 1
+                footer_font = ImageFont.truetype(self.font_path, footer_font_size)
+
+            footer_line_height = footer_font.getmetrics()[0] + footer_font.getmetrics()[1]
+        else:
+            footer_line_height = 0
+
+        body_top = top_padding
+        if header_text:
+            body_top += header_line_height + header_body_gap
+
+        footer_reserved_height = 0
+        if footer_text:
+            footer_reserved_height = footer_line_height + body_footer_gap + 4
+
+        body_area_height = max(0, area_height - body_top - footer_reserved_height)
+        if body_area_height <= 0:
+            return
+
+        if current_body_frame_visible:
+            frame_top = 2
+            frame_bottom = area_height - footer_reserved_height - 5
+            draw.rounded_rectangle(
+                [8, frame_top, self.whisplay.LCD_WIDTH - 9, frame_bottom],
+                radius=4,
+                outline=current_body_frame_color,
+                width=1,
+            )
+
+        if header_text:
+            TextUtils.draw_mixed_text(
+                draw,
+                main_text_image,
+                header_text,
+                header_font,
+                (header_margin_x, top_padding),
+                fill=current_header_color,
+            )
+
         if footer_text:
             footer_y = area_height - footer_line_height - 4
             footer_img = TextUtils.get_line_img(
@@ -274,7 +320,6 @@ class RenderThread(threading.Thread):
             )
             footer_width = footer_img.width
             footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
-
             main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
 
         if current_thread_messages:
@@ -362,6 +407,7 @@ class RenderThread(threading.Thread):
                         self.whisplay.LCD_WIDTH - 2 * body_margin_x,
                     )
                 )
+
         line_height = body_line_height
         max_scroll_top = max(0, (len(lines) + 1) * line_height - body_area_height)
 
@@ -377,38 +423,6 @@ class RenderThread(threading.Thread):
             current_scroll_sync_speed = (target_top - current_scroll_top) / frames
             current_scroll_sync_char_end = None
             current_scroll_sync_duration_ms = None
-
-        if current_body_frame_visible:
-            frame_top = 2
-            frame_bottom = area_height - footer_reserved_height - 5
-            draw.rounded_rectangle(
-                [8, frame_top, self.whisplay.LCD_WIDTH - 9, frame_bottom],
-                radius=4,
-                outline=current_body_frame_color,
-                width=1,
-            )
-
-        if header_text:
-            TextUtils.draw_mixed_text(
-                draw,
-                main_text_image,
-                header_text,
-                header_font,
-                (header_margin_x, top_padding),
-                fill=current_header_color,
-            )
-
-        if footer_text:
-            footer_y = area_height - footer_line_height - 4
-            footer_img = TextUtils.get_line_img(
-                footer_text,
-                footer_font,
-                current_footer_color,
-            )
-            footer_width = footer_img.width
-            footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
-
-            main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
 
         display_lines = []
         render_y = 0
