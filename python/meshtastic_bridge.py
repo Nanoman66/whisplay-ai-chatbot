@@ -172,9 +172,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if destination_id:
                 send_kwargs["destinationId"] = destination_id
 
-            current_iface.sendText(**send_kwargs)
-            self._send_json(200, {"ok": True})
+            print(f"[meshtastic_bridge] send request: {send_kwargs}")
+            result = current_iface.sendText(**send_kwargs)
+            print(f"[meshtastic_bridge] send result: {result}")
+
+            self._send_json(200, {"ok": True, "result": str(result)})
         except Exception as exc:
+            print(f"[meshtastic_bridge] send failed: {exc}")
             self._send_json(500, {"ok": False, "error": str(exc)})
 
     def log_message(self, format: str, *args) -> None:

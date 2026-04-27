@@ -76,11 +76,14 @@ export class MeshtasticClient {
       const requestBody: Record<string, unknown> = {
         text,
         channelIndex: meshtasticConfig.channelIndex,
+        wantAck: true,
       };
 
       if (destinationId) {
         requestBody.destinationId = destinationId;
       }
+
+      console.log("[MeshtasticClient] POST /send request:", requestBody);
 
       const response = await fetch(`${this.baseUrl}/send`, {
         method: "POST",
@@ -89,6 +92,12 @@ export class MeshtasticClient {
       });
 
       const body = await response.json();
+
+      console.log("[MeshtasticClient] POST /send response:", {
+        status: response.status,
+        ok: response.ok,
+        body,
+      });
 
       if (!response.ok || !body.ok) {
         return {
@@ -99,6 +108,7 @@ export class MeshtasticClient {
 
       return { ok: true };
     } catch (error: any) {
+      console.error("[MeshtasticClient] sendText error:", error);
       return { ok: false, error: error?.message || "Unknown send error" };
     }
   }
@@ -127,6 +137,7 @@ export class MeshtasticClient {
 
         if (signature !== this.lastMessageSignature) {
           this.lastMessageSignature = signature;
+          console.log("[MeshtasticClient] incoming polled message:", latest);
           this.messageHandler?.(latest);
         }
       } catch {
