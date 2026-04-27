@@ -614,8 +614,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     const renderThreadView = () => {
       const title = ctx.getCurrentThreadTitle();
       const messages = ctx.getCurrentThreadMessages();
-
-      const bodyText = messages.length ? "" : "No messages yet.";
+      const hasMessages = messages.length > 0;
+      const fallbackText = hasMessages ? " " : "No messages yet.";
 
       display({
         status: title,
@@ -625,7 +625,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         rag_icon_visible: false,
         header_text: "",
         header_color: "#AAAAAA",
-        body_text: bodyText,
+        body_text: fallbackText,
         body_color: "#FFFFFF",
         thread_messages: messages.map((msg) => ({
           headerText: msg.headerText,
@@ -642,7 +642,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         footer_color: FOOTER_LEGEND_COLOR,
         body_frame_visible: true,
         body_frame_color: "#444444",
-        text: bodyText || messages.map((msg) => `${msg.headerText}\n${msg.bodyText}`).join("\n\n"),
+        text: fallbackText,
       });
     };
 

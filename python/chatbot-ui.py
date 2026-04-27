@@ -323,6 +323,10 @@ class RenderThread(threading.Thread):
             main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
 
         if current_thread_messages:
+            self.current_render_text = "__thread_view__"
+            self.text_cache_image = None
+            current_scroll_top = 0
+
             thread_header_font = ImageFont.truetype(self.font_path, thread_header_font_size)
             thread_body_font = ImageFont.truetype(self.font_path, thread_body_font_size)
 
