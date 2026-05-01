@@ -126,6 +126,13 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
         if (tapCount === 2) {
           resetTapState();
+
+          if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
+            ctx.prepareNicknameTargetFromHomeSelection();
+            ctx.transitionTo("nickname_prompt");
+            return;
+          }
+
           ctx.transitionTo("thread_view");
         }
       });
@@ -932,17 +939,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         return;
       }
 
-        if (tapCount === 2) {
-          resetTapState();
-
-          if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
-            ctx.prepareNicknameTargetFromHomeSelection();
-            ctx.transitionTo("nickname_prompt");
-            return;
-          }
-
-          ctx.transitionTo("thread_view");
-        }
+      if (tapCount === 2) {
+        resetTapState();
+        ctx.transitionTo("sleep");
+      }
     });
 
     renderThreadView();
