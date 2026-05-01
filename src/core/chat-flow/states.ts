@@ -285,13 +285,37 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     }
 
     let releaseHandled = false;
+    let transitionHandled = false;
     let releaseWatchdog: NodeJS.Timeout | null = null;
+    let asrFallbackTimer: NodeJS.Timeout | null = null;
 
-    const clearReleaseWatchdog = () => {
+    const clearTimers = () => {
       if (releaseWatchdog) {
         clearInterval(releaseWatchdog);
         releaseWatchdog = null;
       }
+      if (asrFallbackTimer) {
+        clearTimeout(asrFallbackTimer);
+        asrFallbackTimer = null;
+      }
+    };
+
+    const transitionToSleepOnce = () => {
+      if (transitionHandled) {
+        return;
+      }
+      transitionHandled = true;
+      clearTimers();
+      ctx.transitionTo("sleep");
+    };
+
+    const transitionToAsrOnce = () => {
+      if (transitionHandled) {
+        return;
+      }
+      transitionHandled = true;
+      clearTimers();
+      ctx.transitionTo("asr");
     };
 
     const { result, stop } = recordAudioManually(ctx.currentRecordFilePath);
@@ -302,12 +326,16 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       }
 
       releaseHandled = true;
-      clearReleaseWatchdog();
+
+      if (releaseWatchdog) {
+        clearInterval(releaseWatchdog);
+        releaseWatchdog = null;
+      }
 
       if (Date.now() - listeningStartedAt < 500) {
         console.log("[listening] Button released too quickly, returning to sleep");
         stop();
-        ctx.transitionTo("sleep");
+        transitionToSleepOnce();
         return;
       }
 
@@ -316,6 +344,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         RGB: "#ff6800",
         image: "",
       });
+
+      asrFallbackTimer = setTimeout(() => {
+        console.warn("[listening] forcing transition to asr after recorder stop timeout");
+        transitionToAsrOnce();
+      }, 1500);
     };
 
     onButtonReleased(handleRelease);
@@ -329,13 +362,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     result
       .then(() => {
-        clearReleaseWatchdog();
-        ctx.transitionTo("asr");
+        transitionToAsrOnce();
       })
       .catch((err) => {
-        clearReleaseWatchdog();
+        if (transitionHandled) {
+          return;
+        }
         console.error("Error during recording:", err);
-        ctx.transitionTo("sleep");
+        transitionToSleepOnce();
       });
 
     display({
@@ -615,7 +649,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       const title = ctx.getCurrentThreadTitle();
       const messages = ctx.getCurrentThreadMessages();
       const hasMessages = messages.length > 0;
-      const fallbackText = hasMessages ? " " : "No messages yet.";
+      const fallbackText = hasMessages ? "" : "No messages yet.";
 
       display({
         status: title,
