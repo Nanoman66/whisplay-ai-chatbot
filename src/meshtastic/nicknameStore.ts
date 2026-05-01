@@ -4,7 +4,14 @@ import path from "path";
 export type NicknameEntry = {
   nodeId: string;
   nickname?: string;
+  displayName?: string;
+  shortName?: string;
   lastSeenAt?: string;
+};
+
+type ObservedNamePatch = {
+  displayName?: string | null;
+  shortName?: string | null;
 };
 
 type NicknameStoreFile = {
@@ -72,7 +79,7 @@ class MeshtasticNicknameStore {
     }
   }
 
-  touchNode(nodeId?: string | null): void {
+  touchNode(nodeId?: string | null, observed?: ObservedNamePatch): void {
     const normalizedNodeId = normalizeNodeId(nodeId);
     if (!normalizedNodeId) {
       return;
@@ -81,6 +88,17 @@ class MeshtasticNicknameStore {
     const existing = this.entries[normalizedNodeId] || {
       nodeId: normalizedNodeId,
     };
+
+    const cleanedDisplayName = observed?.displayName?.trim();
+    const cleanedShortName = observed?.shortName?.trim();
+
+    if (cleanedDisplayName && cleanedDisplayName !== normalizedNodeId) {
+      existing.displayName = cleanedDisplayName;
+    }
+
+    if (cleanedShortName) {
+      existing.shortName = cleanedShortName;
+    }
 
     existing.lastSeenAt = new Date().toISOString();
     this.entries[normalizedNodeId] = existing;
@@ -104,7 +122,22 @@ class MeshtasticNicknameStore {
     }
 
     const normalizedNodeId = normalizeNodeId(nodeId);
-    return normalizedNodeId || "Unknown";
+    if (!normalizedNodeId) {
+      return "Unknown";
+    }
+
+    const entry = this.entries[normalizedNodeId];
+    const displayName = entry?.displayName?.trim();
+    if (displayName) {
+      return displayName;
+    }
+
+    const shortName = entry?.shortName?.trim();
+    if (shortName) {
+      return shortName;
+    }
+
+    return normalizedNodeId;
   }
 
   setNickname(nodeId: string, nickname: string): void {

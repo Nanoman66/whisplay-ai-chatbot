@@ -410,7 +410,10 @@ class ChatFlow implements ChatFlowContext {
     const fromNodeId = message.from ?? "!unknown";
     const incomingThreadId = routeTag === "Ch" ? null : fromNodeId;
 
-    nicknameStore.touchNode(fromNodeId);
+    nicknameStore.touchNode(fromNodeId, {
+      displayName: message.fromDisplay,
+      shortName: message.fromShortName,
+    });
 
     const fromDisplay = nicknameStore.getDisplayLabel(fromNodeId);
     const receivedAtDisplay = this.formatIncomingTimestamp(new Date());

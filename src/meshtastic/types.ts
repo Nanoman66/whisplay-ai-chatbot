@@ -18,6 +18,8 @@ export type MeshConnectionState =
 export type MeshTextMessage = {
   id?: string;
   from?: string;
+  fromDisplay?: string;
+  fromShortName?: string;
   to?: string;
   text: string;
   channelIndex?: number;

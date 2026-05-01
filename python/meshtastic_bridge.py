@@ -46,13 +46,60 @@ def on_connection_lost(interface, topic=pub.AUTO_TOPIC) -> None:
         iface = None
     print("[meshtastic_bridge] connection lost")
 
+def resolve_node_record(packet: Dict[str, Any], interface) -> Dict[str, Any]:
+    if interface is None or not hasattr(interface, "nodes"):
+        return {}
+
+    nodes = getattr(interface, "nodes", {}) or {}
+    if not isinstance(nodes, dict):
+        return {}
+
+    from_id = packet.get("fromId")
+    from_num = packet.get("from")
+
+    direct_candidates = []
+    if from_id in nodes:
+        direct_candidates.append(nodes.get(from_id))
+    if from_num in nodes:
+        direct_candidates.append(nodes.get(from_num))
+
+    for candidate in direct_candidates:
+        if isinstance(candidate, dict):
+            return candidate
+
+    for node in nodes.values():
+        if not isinstance(node, dict):
+            continue
+
+        user = node.get("user", {}) or {}
+        if from_id and user.get("id") == from_id:
+            return node
+
+        if from_num is not None and node.get("num") == from_num:
+            return node
+
+    return {}
+
+
+def resolve_sender_labels(packet: Dict[str, Any], interface) -> tuple[str | None, str | None]:
+    node = resolve_node_record(packet, interface)
+    if not node:
+        return None, None
+
+    user = node.get("user", {}) or {}
+    long_name = user.get("longName") or None
+    short_name = user.get("shortName") or None
+    return long_name, short_name
 
 def on_receive(packet: Dict[str, Any], interface) -> None:
     decoded = packet.get("decoded", {})
     text = decoded.get("text", "")
+    from_display, from_short_name = resolve_sender_labels(packet, interface)
 
     entry = {
         "from": packet.get("fromId") or packet.get("from"),
+        "fromDisplay": from_display,
+        "fromShortName": from_short_name,
         "to": packet.get("toId") or packet.get("to"),
         "text": text,
         "channelIndex": packet.get("channel"),
