@@ -332,14 +332,14 @@ class ChatFlow implements ChatFlowContext {
       return;
     }
 
-    const pageSize = 6;
+    const pageSize = 4;
     const maxPage = Math.max(0, Math.ceil(messages.length / pageSize) - 1);
     this.currentThreadPage = this.currentThreadPage >= maxPage ? 0 : this.currentThreadPage + 1;
   };
 
   getCurrentThreadMessages = (): ThreadDisplayMessage[] => {
     const messages = threadHistoryStore.getThreadEntries(this.currentHomeSelectionId);
-    const pageSize = 6;
+    const pageSize = 4;
     const total = messages.length;
 
     if (!total) {
