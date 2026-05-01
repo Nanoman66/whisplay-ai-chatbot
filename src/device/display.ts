@@ -452,8 +452,22 @@ export class WhisplayDisplay {
       }
     }
 
-    if (!Object.prototype.hasOwnProperty.call(normalizedStatus, "thread_messages")) {
-      normalizedStatus.thread_messages = [];
+    const hasThreadMessagesOverride = Object.prototype.hasOwnProperty.call(
+      newStatus,
+      "thread_messages",
+    );
+
+    if (!hasThreadMessagesOverride) {
+      const hasScreenContentOverride =
+        hasTextOverride ||
+        Object.prototype.hasOwnProperty.call(newStatus, "status") ||
+        Object.prototype.hasOwnProperty.call(newStatus, "header_text") ||
+        Object.prototype.hasOwnProperty.call(newStatus, "body_text") ||
+        Object.prototype.hasOwnProperty.call(newStatus, "footer_text");
+
+      if (hasScreenContentOverride) {
+        normalizedStatus.thread_messages = [];
+      }
     }
 
     const {
