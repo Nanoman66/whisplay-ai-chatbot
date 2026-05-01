@@ -200,8 +200,10 @@ class RenderThread(threading.Thread):
             text_draw = ImageDraw.Draw(text_bg_image)
 
             if current_thread_messages:
+                print(f"[UI] render_frame using thread view: {len(current_thread_messages)} messages")
                 self.render_thread_view(text_bg_image, text_area_height, text_draw)
             else:
+                print("[UI] render_frame using main text view")
                 self.render_main_text(text_bg_image, text_area_height, text_draw, text, current_scroll_speed)
 
             self.whisplay.draw_image(
@@ -292,6 +294,7 @@ class RenderThread(threading.Thread):
             footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
             main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
 
+        print(f"[UI] render_thread_view: {len(current_thread_messages)} messages")
         current_scroll_top = 0
 
         thread_header_font = ImageFont.truetype(self.font_path, thread_header_font_size)
@@ -909,9 +912,8 @@ def update_display_data(status=None, emoji=None, text=None,
     if body_color is not None:
         current_body_color = ColorUtils.get_rgb255_from_any(body_color)
     if thread_messages is not None:
-        current_thread_messages = thread_messages
-    elif body_text is not None:
-        current_thread_messages = []
+        current_thread_messages = [dict(item) for item in thread_messages]
+        print(f"[UI] thread_messages set: {len(current_thread_messages)}")
     if footer_text is not None:
         current_footer_text = footer_text
     if footer_color is not None:
