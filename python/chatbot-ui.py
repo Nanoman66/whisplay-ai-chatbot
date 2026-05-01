@@ -112,7 +112,7 @@ class RenderThread(threading.Thread):
             whisplay.draw_image(0, 0, whisplay.LCD_WIDTH, whisplay.LCD_HEIGHT, rgb565_data)
 
     def render_frame(self, status, emoji, text, scroll_top, battery_level, battery_color):
-        global current_scroll_speed, current_image_path, current_image, camera_mode
+        global current_scroll_speed, current_image_path, current_image, camera_mode, current_thread_messages
         if camera_mode:
             return  # Skip rendering if in camera mode
         if current_image_path not in [None, ""]:
@@ -198,8 +198,19 @@ class RenderThread(threading.Thread):
             text_area_height = self.whisplay.LCD_HEIGHT - header_height - progress_bar_height
             text_bg_image = Image.new("RGBA", (self.whisplay.LCD_WIDTH, text_area_height), (0, 0, 0, 255))
             text_draw = ImageDraw.Draw(text_bg_image)
-            self.render_main_text(text_bg_image, text_area_height, text_draw, text, current_scroll_speed)
-            self.whisplay.draw_image(0, header_height + progress_bar_height, self.whisplay.LCD_WIDTH, text_area_height, ImageUtils.image_to_rgb565(text_bg_image, self.whisplay.LCD_WIDTH, text_area_height))
+
+            if current_thread_messages:
+                self.render_thread_view(text_bg_image, text_area_height, text_draw)
+            else:
+                self.render_main_text(text_bg_image, text_area_height, text_draw, text, current_scroll_speed)
+
+            self.whisplay.draw_image(
+                0,
+                header_height + progress_bar_height,
+                self.whisplay.LCD_WIDTH,
+                text_area_height,
+                ImageUtils.image_to_rgb565(text_bg_image, self.whisplay.LCD_WIDTH, text_area_height),
+            )
 
         
 
@@ -217,6 +228,141 @@ class RenderThread(threading.Thread):
                 total_chars += 1
         target_top = target_line * line_height - (area_height // 2)
         return max(0, target_top)
+        
+    def render_thread_view(self, main_text_image, area_height, draw):
+        global current_scroll_top
+        global current_thread_messages
+        global current_footer_text, current_footer_color
+        global current_body_frame_visible, current_body_frame_color
+        global current_body_color
+        global message_footer_font_size, message_footer_min_font_size
+        global thread_header_font_size, thread_body_font_size, thread_header_body_gap, thread_message_gap
+
+        body_margin_x = 10
+        top_padding = 4
+        body_footer_gap = 6
+
+        footer_text = (current_footer_text or "").strip()
+
+        footer_font_size = message_footer_font_size
+        footer_font = ImageFont.truetype(self.font_path, footer_font_size)
+
+        if footer_text:
+            max_footer_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
+            while footer_font_size > message_footer_min_font_size:
+                bbox = footer_font.getbbox(footer_text)
+                footer_width = bbox[2] - bbox[0]
+                if footer_width <= max_footer_width:
+                    break
+                footer_font_size -= 1
+                footer_font = ImageFont.truetype(self.font_path, footer_font_size)
+
+            footer_line_height = footer_font.getmetrics()[0] + footer_font.getmetrics()[1]
+        else:
+            footer_line_height = 0
+
+        body_top = top_padding
+
+        footer_reserved_height = 0
+        if footer_text:
+            footer_reserved_height = footer_line_height + body_footer_gap + 4
+
+        body_area_height = max(0, area_height - body_top - footer_reserved_height)
+        if body_area_height <= 0:
+            return
+
+        if current_body_frame_visible:
+            frame_top = 2
+            frame_bottom = area_height - footer_reserved_height - 5
+            draw.rounded_rectangle(
+                [8, frame_top, self.whisplay.LCD_WIDTH - 9, frame_bottom],
+                radius=4,
+                outline=current_body_frame_color,
+                width=1,
+            )
+
+        if footer_text:
+            footer_y = area_height - footer_line_height - 4
+            footer_img = TextUtils.get_line_img(
+                footer_text,
+                footer_font,
+                current_footer_color,
+            )
+            footer_width = footer_img.width
+            footer_x = max(0, (self.whisplay.LCD_WIDTH - footer_width) // 2)
+            main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
+
+        current_scroll_top = 0
+
+        thread_header_font = ImageFont.truetype(self.font_path, thread_header_font_size)
+        thread_body_font = ImageFont.truetype(self.font_path, thread_body_font_size)
+
+        thread_header_line_height = thread_header_font.getmetrics()[0] + thread_header_font.getmetrics()[1]
+        thread_body_line_height = thread_body_font.getmetrics()[0] + thread_body_font.getmetrics()[1]
+
+        content_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
+        content_y = body_top
+        body_bottom = body_top + body_area_height
+
+        for item in current_thread_messages:
+            header_text_value = (item.get("headerText") or "").strip()
+            header_color_value = ColorUtils.get_rgb255_from_any(item.get("headerColor")) or (170, 170, 170, 255)
+            header_align_value = item.get("headerAlign") or "left"
+            body_text_value = item.get("bodyText") or ""
+            body_color_value = ColorUtils.get_rgb255_from_any(item.get("bodyColor")) or current_body_color
+
+            if header_text_value:
+                header_img = TextUtils.get_line_img(
+                    header_text_value,
+                    thread_header_font,
+                    header_color_value,
+                )
+
+                if header_align_value == "right":
+                    header_x = max(body_margin_x, self.whisplay.LCD_WIDTH - body_margin_x - header_img.width)
+                else:
+                    header_x = body_margin_x
+
+                if content_y + header_img.height > body_bottom:
+                    break
+
+                main_text_image.paste(header_img, (header_x, content_y), header_img)
+                content_y += thread_header_line_height + thread_header_body_gap
+
+            if body_text_value:
+                wrapped_thread_lines = []
+                for paragraph in body_text_value.split("\n"):
+                    if paragraph == "":
+                        wrapped_thread_lines.append("")
+                    else:
+                        wrapped_thread_lines.extend(
+                            TextUtils.wrap_text(
+                                draw,
+                                paragraph,
+                                thread_body_font,
+                                content_width,
+                            )
+                        )
+
+                for line in wrapped_thread_lines:
+                    if content_y + thread_body_line_height > body_bottom:
+                        return
+
+                    if line:
+                        TextUtils.draw_mixed_text(
+                            draw,
+                            main_text_image,
+                            line,
+                            thread_body_font,
+                            (body_margin_x, content_y),
+                            fill=body_color_value,
+                        )
+                    content_y += thread_body_line_height
+
+            content_y += thread_message_gap
+
+            if content_y >= body_bottom:
+                break
 
     def render_main_text(self, main_text_image, area_height, draw, text, scroll_speed=2):
         global current_scroll_top, current_scroll_sync_char_end
