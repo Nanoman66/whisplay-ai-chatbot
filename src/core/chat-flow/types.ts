@@ -93,6 +93,7 @@ export interface ChatFlowContext {
   shouldPromptForNickname: () => boolean;
   prepareNicknameTargetFromHomeSelection: () => void;
   getNicknameTargetLabel: () => string;
+  getFormattedNicknameDraft: () => string;
   saveNicknameDraft: () => void;
   clearNicknameDraft: () => void;
 }

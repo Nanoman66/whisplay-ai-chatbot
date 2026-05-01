@@ -391,17 +391,42 @@ class ChatFlow implements ChatFlowContext {
     return nicknameStore.getDisplayLabel(this.currentNicknameTargetId);
   };
 
+  formatNicknameText = (value: string): string => {
+    const cleaned = value.trim().replace(/\s+/g, " ");
+    if (!cleaned) {
+      return "";
+    }
+
+    return cleaned
+      .split(" ")
+      .map((word) =>
+        word
+          .split("-")
+          .map((part) =>
+            part
+              ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+              : part,
+          )
+          .join("-"),
+      )
+      .join(" ");
+  };
+
+  getFormattedNicknameDraft = (): string => {
+    return this.formatNicknameText(this.nicknameDraftText);
+  };
+
   saveNicknameDraft = (): void => {
     if (!this.currentNicknameTargetId) {
       throw new Error("No nickname target selected.");
     }
 
-    const cleanedNickname = this.nicknameDraftText.trim();
-    if (!cleanedNickname) {
+    const formattedNickname = this.getFormattedNicknameDraft();
+    if (!formattedNickname) {
       throw new Error("Nickname cannot be empty.");
     }
 
-    nicknameStore.setNickname(this.currentNicknameTargetId, cleanedNickname);
+    nicknameStore.setNickname(this.currentNicknameTargetId, formattedNickname);
   };
 
   clearNicknameDraft = (): void => {

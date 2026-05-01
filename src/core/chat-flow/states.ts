@@ -723,6 +723,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     const renderReviewNickname = () => {
       const targetLabel = ctx.getNicknameTargetLabel();
+      const formattedNickname =
+        ctx.getFormattedNicknameDraft() || ctx.nicknameDraftText;
 
       display({
         status: "nickname",
@@ -730,7 +732,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         RGB: "#6633aa",
         header_text: `Nickname for: ${targetLabel}`,
         header_color: "#00c8a3",
-        body_text: ctx.nicknameDraftText,
+        body_text: formattedNickname,
         body_color: "#FFFFFF",
         footer_text: buildFooterLegend({
           single: "rerecord",
@@ -740,7 +742,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         footer_color: FOOTER_LEGEND_COLOR,
         body_frame_visible: true,
         body_frame_color: "#444444",
-        text: `Nickname for: ${targetLabel}\n${ctx.nicknameDraftText}`,
+        text: `Nickname for: ${targetLabel}\n${formattedNickname}`,
       });
     };
 
@@ -834,8 +836,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       if (tapCount === 1) {
         tapTimer = setTimeout(() => {
           if (tapCount === 1) {
-            ctx.recordingPurpose = "nickname";
-            ctx.transitionTo("listening");
+            ctx.nicknameDraftText = "";
+            ctx.recordingPurpose = "message";
+            ctx.transitionTo("nickname_prompt");
           }
           resetTapState();
         }, 700);
