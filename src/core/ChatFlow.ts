@@ -64,6 +64,9 @@ class ChatFlow implements ChatFlowContext {
   currentIncomingMessage: IncomingDisplayMessage | null = null;
   currentHomeSelectionId: string | null = null;
   currentOutgoingRecipientId: string | null = null;
+  currentNicknameTargetId: string | null = null;
+  nicknameDraftText: string = "";
+  recordingPurpose: "message" | "nickname" = "message";
   currentThreadPage: number = 0;
     appMode: "chatbot" | "meshtastic" =
     (process.env.APP_MODE || "chatbot").toLowerCase() === "meshtastic"
@@ -365,6 +368,46 @@ class ChatFlow implements ChatFlowContext {
       (option) => option.nodeId === this.currentHomeSelectionId,
     );
     return selected?.label || "Channel";
+  };
+
+  shouldPromptForNickname = (): boolean => {
+    if (!this.currentHomeSelectionId) {
+      return false;
+    }
+
+    return !nicknameStore.getNickname(this.currentHomeSelectionId);
+  };
+
+  prepareNicknameTargetFromHomeSelection = (): void => {
+    this.currentNicknameTargetId = this.currentHomeSelectionId;
+    this.nicknameDraftText = "";
+  };
+
+  getNicknameTargetLabel = (): string => {
+    if (!this.currentNicknameTargetId) {
+      return "Recipient";
+    }
+
+    return nicknameStore.getDisplayLabel(this.currentNicknameTargetId);
+  };
+
+  saveNicknameDraft = (): void => {
+    if (!this.currentNicknameTargetId) {
+      throw new Error("No nickname target selected.");
+    }
+
+    const cleanedNickname = this.nicknameDraftText.trim();
+    if (!cleanedNickname) {
+      throw new Error("Nickname cannot be empty.");
+    }
+
+    nicknameStore.setNickname(this.currentNicknameTargetId, cleanedNickname);
+  };
+
+  clearNicknameDraft = (): void => {
+    this.currentNicknameTargetId = null;
+    this.nicknameDraftText = "";
+    this.recordingPurpose = "message";
   };
 
   appendOutgoingThreadMessage = (text: string, toNodeId: string | null): void => {

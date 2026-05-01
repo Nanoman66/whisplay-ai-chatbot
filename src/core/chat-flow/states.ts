@@ -96,6 +96,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           }
           longPressHandled = true;
           resetTapState();
+          ctx.recordingPurpose = "message";
           ctx.transitionTo("listening");
         }, 700);
       });
@@ -442,6 +443,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       }
       if (result) {
         console.log("Audio recognized result:", result);
+
+        if (ctx.recordingPurpose === "nickname") {
+          ctx.nicknameDraftText = result;
+          ctx.recordingPurpose = "message";
+          display({ status: "recognizing", text: result });
+          ctx.transitionTo("review_nickname");
+          return;
+        }
+
 		ctx.asrText = result;
 		ctx.endAfterAnswer = ctx.shouldEndAfterAnswer(result);
 		if (ctx.wakeSessionActive) {
@@ -455,6 +465,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 		}
 		return;
       }
+      if (ctx.recordingPurpose === "nickname") {
+        ctx.transitionTo("nickname_prompt");
+        return;
+      }
+
       if (ctx.wakeSessionActive) {
         if (ctx.shouldContinueWakeSession()) {
           ctx.transitionTo("wake_listening");
@@ -629,6 +644,205 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   renderReviewScreen();
 },
 
+  nickname_prompt: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+
+    const continueToThread = () => {
+      ctx.clearNicknameDraft();
+      ctx.transitionTo("thread_view");
+    };
+
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      longPressHandled = false;
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
+        }
+        longPressHandled = true;
+        ctx.recordingPurpose = "nickname";
+        ctx.transitionTo("listening");
+      }, 700);
+    });
+
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      continueToThread();
+    });
+
+    display({
+      status: "Nickname?",
+      emoji: "🏷️",
+      RGB: "#6633aa",
+      header_text: `Recipient: ${ctx.getNicknameTargetLabel()}`,
+      header_color: "#00c8a3",
+      body_text: "Would you like to nickname this recipient?",
+      body_color: "#FFFFFF",
+      footer_text: buildFooterLegend({
+        single: "No",
+        long: "Hold to record nickname",
+      }),
+      footer_color: FOOTER_LEGEND_COLOR,
+      body_frame_visible: true,
+      body_frame_color: "#444444",
+      text: `Recipient: ${ctx.getNicknameTargetLabel()}\nWould you like to nickname this recipient?`,
+    });
+  },
+
+  review_nickname: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+    let tapCount = 0;
+    let tapTimer: NodeJS.Timeout | null = null;
+    let isSaving = false;
+
+    const resetTapState = () => {
+      tapCount = 0;
+      if (tapTimer) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
+      }
+    };
+
+    const renderReviewNickname = () => {
+      const targetLabel = ctx.getNicknameTargetLabel();
+
+      display({
+        status: "nickname",
+        emoji: "🏷️",
+        RGB: "#6633aa",
+        header_text: `Nickname for: ${targetLabel}`,
+        header_color: "#00c8a3",
+        body_text: ctx.nicknameDraftText,
+        body_color: "#FFFFFF",
+        footer_text: buildFooterLegend({
+          single: "rerecord",
+          double: "save",
+          long: "cancel",
+        }),
+        footer_color: FOOTER_LEGEND_COLOR,
+        body_frame_visible: true,
+        body_frame_color: "#444444",
+        text: `Nickname for: ${targetLabel}\n${ctx.nicknameDraftText}`,
+      });
+    };
+
+    const cancelNickname = () => {
+      resetTapState();
+      ctx.clearNicknameDraft();
+      ctx.transitionTo("thread_view");
+    };
+
+    const saveNickname = () => {
+      if (isSaving) {
+        return;
+      }
+
+      isSaving = true;
+      resetTapState();
+
+      try {
+        ctx.saveNicknameDraft();
+      } catch (error: any) {
+        display({
+          status: "error",
+          emoji: "⚠️",
+          RGB: "#ff0000",
+          text: error?.message || "Nickname save failed.",
+          footer_text: "",
+          footer_color: FOOTER_LEGEND_COLOR,
+        });
+
+        setTimeout(() => {
+          if (ctx.currentFlowName === "review_nickname") {
+            ctx.clearNicknameDraft();
+            ctx.transitionTo("thread_view");
+          }
+        }, 1200);
+
+        return;
+      }
+
+      const savedLabel = ctx.getNicknameTargetLabel();
+
+      display({
+        status: "saved",
+        emoji: "✅",
+        RGB: "#00aa55",
+        text: `Nickname saved: ${savedLabel}`,
+        footer_text: "",
+        footer_color: FOOTER_LEGEND_COLOR,
+      });
+
+      setTimeout(() => {
+        ctx.clearNicknameDraft();
+        ctx.transitionTo("thread_view");
+      }, 900);
+    };
+
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      if (isSaving) {
+        return;
+      }
+
+      longPressHandled = false;
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
+        }
+
+        longPressHandled = true;
+        cancelNickname();
+      }, 1200);
+    });
+
+    onButtonReleased(() => {
+      if (isSaving) {
+        return;
+      }
+
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      tapCount += 1;
+
+      if (tapCount === 1) {
+        tapTimer = setTimeout(() => {
+          if (tapCount === 1) {
+            ctx.recordingPurpose = "nickname";
+            ctx.transitionTo("listening");
+          }
+          resetTapState();
+        }, 700);
+        return;
+      }
+
+      if (tapCount === 2) {
+        saveNickname();
+      }
+    });
+
+    renderReviewNickname();
+  },
+
   thread_view: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
     let longPressHandled = false;
@@ -690,6 +904,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           }
           longPressHandled = true;
           resetTapState();
+          ctx.recordingPurpose = "message";
           ctx.transitionTo("listening");
         }, 700);
     });
@@ -717,10 +932,17 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         return;
       }
 
-      if (tapCount === 2) {
-        resetTapState();
-        ctx.transitionTo("sleep");
-      }
+        if (tapCount === 2) {
+          resetTapState();
+
+          if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
+            ctx.prepareNicknameTargetFromHomeSelection();
+            ctx.transitionTo("nickname_prompt");
+            return;
+          }
+
+          ctx.transitionTo("thread_view");
+        }
     });
 
     renderThreadView();

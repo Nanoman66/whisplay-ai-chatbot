@@ -9,6 +9,8 @@ export type FlowName =
   | "wake_listening"
   | "asr"
   | "review_outgoing"
+  | "nickname_prompt"
+  | "review_nickname"
   | "incoming_message"
   | "thread_view"
   | "answer"
@@ -61,6 +63,9 @@ export interface ChatFlowContext {
   meshtasticService: MeshtasticService | null;
   currentHomeSelectionId: string | null;
   currentOutgoingRecipientId: string | null;
+  currentNicknameTargetId: string | null;
+  nicknameDraftText: string;
+  recordingPurpose: "message" | "nickname";
   incomingMessageQueue: IncomingDisplayMessage[];
   currentIncomingMessage: IncomingDisplayMessage | null;
   currentThreadPage: number;
@@ -85,4 +90,9 @@ export interface ChatFlowContext {
   getCurrentThreadMessages: () => ThreadDisplayMessage[];
   getCurrentThreadTitle: () => string;
   appendOutgoingThreadMessage: (text: string, toNodeId: string | null) => void;
+  shouldPromptForNickname: () => boolean;
+  prepareNicknameTargetFromHomeSelection: () => void;
+  getNicknameTargetLabel: () => string;
+  saveNicknameDraft: () => void;
+  clearNicknameDraft: () => void;
 }
