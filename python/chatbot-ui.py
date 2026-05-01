@@ -96,8 +96,10 @@ class RenderThread(threading.Thread):
         self.running = True
         self.main_text_font = ImageFont.truetype(self.font_path, 20)
         self.main_text_line_height = self.main_text_font.getmetrics()[0] + self.main_text_font.getmetrics()[1]
-        self.text_cache_image = None
         self.current_render_text = ""
+        self.text_cache_image = None
+        self.thread_cache_image = None
+        self.current_thread_signature = ""
 
     def render_init_screen(self):
         # Display logo on startup
@@ -323,80 +325,109 @@ class RenderThread(threading.Thread):
             main_text_image.paste(footer_img, (footer_x, footer_y), footer_img)
 
         if current_thread_messages:
-            self.current_render_text = "__thread_view__"
-            self.text_cache_image = None
             current_scroll_top = 0
 
-            thread_header_font = ImageFont.truetype(self.font_path, thread_header_font_size)
-            thread_body_font = ImageFont.truetype(self.font_path, thread_body_font_size)
+            thread_signature = json.dumps(
+                {
+                    "messages": current_thread_messages,
+                    "body_top": body_top,
+                    "body_area_height": body_area_height,
+                    "body_margin_x": body_margin_x,
+                    "thread_header_font_size": thread_header_font_size,
+                    "thread_body_font_size": thread_body_font_size,
+                    "thread_header_body_gap": thread_header_body_gap,
+                    "thread_message_gap": thread_message_gap,
+                },
+                sort_keys=True,
+            )
 
-            thread_header_line_height = thread_header_font.getmetrics()[0] + thread_header_font.getmetrics()[1]
-            thread_body_line_height = thread_body_font.getmetrics()[0] + thread_body_font.getmetrics()[1]
+            if self.thread_cache_image is None or self.current_thread_signature != thread_signature:
+                self.current_thread_signature = thread_signature
+                self.thread_cache_image = Image.new(
+                    "RGBA",
+                    (self.whisplay.LCD_WIDTH, area_height),
+                    (0, 0, 0, 0),
+                )
+                thread_draw = ImageDraw.Draw(self.thread_cache_image)
 
-            content_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
-            content_y = body_top
-            body_bottom = body_top + body_area_height
+                thread_header_font = ImageFont.truetype(self.font_path, thread_header_font_size)
+                thread_body_font = ImageFont.truetype(self.font_path, thread_body_font_size)
 
-            for item in current_thread_messages:
-                header_text_value = (item.get("headerText") or "").strip()
-                header_color_value = ColorUtils.get_rgb255_from_any(item.get("headerColor")) or current_header_color
-                header_align_value = item.get("headerAlign") or "left"
-                body_text_value = item.get("bodyText") or ""
-                body_color_value = ColorUtils.get_rgb255_from_any(item.get("bodyColor")) or current_body_color
+                thread_header_line_height = thread_header_font.getmetrics()[0] + thread_header_font.getmetrics()[1]
+                thread_body_line_height = thread_body_font.getmetrics()[0] + thread_body_font.getmetrics()[1]
 
-                if header_text_value:
-                    header_img = TextUtils.get_line_img(
-                        header_text_value,
-                        thread_header_font,
-                        header_color_value,
-                    )
-                    if header_align_value == "right":
-                        header_x = max(body_margin_x, self.whisplay.LCD_WIDTH - body_margin_x - header_img.width)
-                    else:
-                        header_x = body_margin_x
+                content_width = self.whisplay.LCD_WIDTH - 2 * body_margin_x
+                content_y = body_top
+                body_bottom = body_top + body_area_height
 
-                    if content_y + header_img.height > body_bottom:
+                for item in current_thread_messages:
+                    header_text_value = (item.get("headerText") or "").strip()
+                    header_color_value = ColorUtils.get_rgb255_from_any(item.get("headerColor")) or current_header_color
+                    header_align_value = item.get("headerAlign") or "left"
+                    body_text_value = item.get("bodyText") or ""
+                    body_color_value = ColorUtils.get_rgb255_from_any(item.get("bodyColor")) or current_body_color
+
+                    if header_text_value:
+                        header_img = TextUtils.get_line_img(
+                            header_text_value,
+                            thread_header_font,
+                            header_color_value,
+                        )
+                        if header_align_value == "right":
+                            header_x = max(body_margin_x, self.whisplay.LCD_WIDTH - body_margin_x - header_img.width)
+                        else:
+                            header_x = body_margin_x
+
+                        if content_y + header_img.height > body_bottom:
+                            break
+
+                        self.thread_cache_image.paste(header_img, (header_x, content_y), header_img)
+                        content_y += thread_header_line_height + thread_header_body_gap
+
+                    if body_text_value:
+                        wrapped_thread_lines = []
+                        for paragraph in body_text_value.split("\n"):
+                            if paragraph == "":
+                                wrapped_thread_lines.append("")
+                            else:
+                                wrapped_thread_lines.extend(
+                                    TextUtils.wrap_text(
+                                        thread_draw,
+                                        paragraph,
+                                        thread_body_font,
+                                        content_width,
+                                    )
+                                )
+
+                        for line in wrapped_thread_lines:
+                            if content_y + thread_body_line_height > body_bottom:
+                                break
+
+                            if line:
+                                TextUtils.draw_mixed_text(
+                                    thread_draw,
+                                    self.thread_cache_image,
+                                    line,
+                                    thread_body_font,
+                                    (body_margin_x, content_y),
+                                    fill=body_color_value,
+                                )
+                            content_y += thread_body_line_height
+
+                    content_y += thread_message_gap
+
+                    if content_y >= body_bottom:
                         break
 
-                    main_text_image.paste(header_img, (header_x, content_y), header_img)
-                    content_y += thread_header_line_height + thread_header_body_gap
-
-                if body_text_value:
-                    wrapped_thread_lines = []
-                    for paragraph in body_text_value.split("\n"):
-                        if paragraph == "":
-                            wrapped_thread_lines.append("")
-                        else:
-                            wrapped_thread_lines.extend(
-                                TextUtils.wrap_text(
-                                    draw,
-                                    paragraph,
-                                    thread_body_font,
-                                    content_width,
-                                )
-                            )
-
-                    for line in wrapped_thread_lines:
-                        if content_y + thread_body_line_height > body_bottom:
-                            return
-
-                        if line:
-                            TextUtils.draw_mixed_text(
-                                draw,
-                                main_text_image,
-                                line,
-                                thread_body_font,
-                                (body_margin_x, content_y),
-                                fill=body_color_value,
-                            )
-                        content_y += thread_body_line_height
-
-                content_y += thread_message_gap
-
-                if content_y >= body_bottom:
-                    break
+            if self.thread_cache_image is not None:
+                main_text_image.paste(self.thread_cache_image, (0, 0), self.thread_cache_image)
 
             return
+
+        self.thread_cache_image = None
+        self.current_thread_signature = ""
+        self.current_render_text = ""
+        self.text_cache_image = None
 
         lines = []
         for paragraph in (body_text or "").split("\n"):
