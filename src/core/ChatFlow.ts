@@ -649,6 +649,15 @@ class ChatFlow implements ChatFlowContext {
     previousFlowName: FlowName,
     nextFlowName: FlowName,
   ): void => {
+    const dormantEligibleFlows: FlowName[] = [
+      "sleep",
+      "thread_view",
+      "review_outgoing",
+      "nickname_prompt",
+      "review_nickname",
+      "settings_menu",
+    ];
+
     if (
       nextFlowName === "dormant" &&
       previousFlowName !== "dormant" &&
@@ -676,16 +685,10 @@ class ChatFlow implements ChatFlowContext {
       }
     }
 
-    if (
-      [
-        "sleep",
-        "thread_view",
-        "review_outgoing",
-        "nickname_prompt",
-        "review_nickname",
-        "settings_menu",
-      ].includes(nextFlowName)
-    ) {
+    if (dormantEligibleFlows.includes(nextFlowName)) {
+      if (!dormantEligibleFlows.includes(previousFlowName)) {
+        this.lastUserInteractionAt = Date.now();
+      }
       this.scheduleDormantTimer();
     } else {
       this.clearDormantTimer();

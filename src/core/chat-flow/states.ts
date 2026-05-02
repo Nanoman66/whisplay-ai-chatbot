@@ -875,6 +875,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonPressed(() => {
       if (isSending) return;
+      ctx.recordUserInteraction();
       longPressTimer = setTimeout(() => {
         if (!isButtonDown()) {
           return;
@@ -886,6 +887,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       if (isSending) return;
+      ctx.recordUserInteraction();
 
       if (longPressTimer) {
         clearTimeout(longPressTimer);
@@ -930,6 +932,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     onButtonPressed(() => {
+      ctx.recordUserInteraction();
       longPressHandled = false;
       longPressTimer = setTimeout(() => {
         if (!isButtonDown()) {
@@ -956,6 +959,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         return;
       }
 
+      ctx.recordUserInteraction();
       continueToThread();
     });
 
