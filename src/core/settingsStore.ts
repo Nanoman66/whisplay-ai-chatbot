@@ -1,14 +1,18 @@
 import fs from "fs";
 import path from "path";
 
+export const AWAKE_BRIGHTNESS_OPTIONS = [20, 35, 50, 75, 100] as const;
+
 export type AppSettings = {
   soundEnabled: boolean;
+  awakeBrightness: number;
   dormantTimeoutSeconds: number;
   incomingWakeSeconds: number;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
   soundEnabled: true,
+  awakeBrightness: 75,
   dormantTimeoutSeconds: 45,
   incomingWakeSeconds: 6,
 };
@@ -25,12 +29,34 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.min(max, Math.max(min, Math.round(numeric)));
 }
 
+function normalizeBrightness(value: unknown): number {
+  const fallback = DEFAULT_SETTINGS.awakeBrightness;
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  let closest = AWAKE_BRIGHTNESS_OPTIONS[0];
+  let closestDistance = Math.abs(numeric - closest);
+
+  for (const option of AWAKE_BRIGHTNESS_OPTIONS) {
+    const distance = Math.abs(numeric - option);
+    if (distance < closestDistance) {
+      closest = option;
+      closestDistance = distance;
+    }
+  }
+
+  return closest;
+}
+
 function normalizeSettings(input?: PersistedSettingsFile | null): AppSettings {
   return {
     soundEnabled:
       typeof input?.soundEnabled === "boolean"
         ? input.soundEnabled
         : DEFAULT_SETTINGS.soundEnabled,
+    awakeBrightness: normalizeBrightness(input?.awakeBrightness),
     dormantTimeoutSeconds: clampNumber(
       input?.dormantTimeoutSeconds,
       DEFAULT_SETTINGS.dormantTimeoutSeconds,

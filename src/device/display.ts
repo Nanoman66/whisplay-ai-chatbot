@@ -429,7 +429,7 @@ export class WhisplayDisplay {
         return;
       }
       this.currentStatus.text = renderedText;
-      const data = JSON.stringify({ text: renderedText, brightness: 100 });
+      const data = JSON.stringify({ text: renderedText });
       this.sendToDisplay(data);
       this.webDisplay?.updateStatus(this.currentStatus);
     }, 1000);
@@ -541,7 +541,6 @@ export class WhisplayDisplay {
     this.currentStatus.music_duration_ms = music_duration_ms;
     
     const changedValuesObj = Object.fromEntries(changedValues);
-    changedValuesObj.brightness = 100;
     const data = JSON.stringify(changedValuesObj);
     if (isTextChanged) console.log("send data:", data);
 

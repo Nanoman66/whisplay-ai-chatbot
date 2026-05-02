@@ -38,7 +38,14 @@ import {
   resetCameraModeControl,
 } from "./camera-mode";
 import { DEFAULT_EMOJI } from "../../utils";
-import { isMusicPlaying, getCurrentTrackTitle, stopMusicPlayback, startPendingMusicPlayback, onMusicTrackChange, onMusicPlaybackEnd } from "../../device/music-player";
+import {
+  isMusicPlaying,
+  getCurrentTrackTitle,
+  stopMusicPlayback,
+  startPendingMusicPlayback,
+  onMusicTrackChange,
+  onMusicPlaybackEnd,
+} from "../../device/music-player";
 import { buildFooterLegend, FOOTER_LEGEND_COLOR } from "./footerLegend";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
@@ -49,13 +56,24 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       let tapCount = 0;
       let tapTimer: NodeJS.Timeout | null = null;
       let renameHoldCandidate = false;
+      let settingsArmTimer: NodeJS.Timeout | null = null;
+      let settingsHoldArmed = false;
+      let settingsHoldInProgress = false;
 
       const resetTapState = () => {
         tapCount = 0;
         renameHoldCandidate = false;
+        settingsHoldArmed = false;
+        settingsHoldInProgress = false;
+
         if (tapTimer) {
           clearTimeout(tapTimer);
           tapTimer = null;
+        }
+
+        if (settingsArmTimer) {
+          clearTimeout(settingsArmTimer);
+          settingsArmTimer = null;
         }
       };
 
@@ -68,6 +86,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           emoji: "",
           top_center_text: "{time}",
           RGB: "#000055",
+          brightness: ctx.getAwakeBrightness(),
           rag_icon_visible: false,
           header_text: "",
           header_color: "#AAAAAA",
@@ -94,18 +113,34 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
         longPressHandled = false;
 
-        const canStartSecretHold =
+        if (settingsHoldArmed) {
+          settingsHoldInProgress = true;
+
+          if (settingsArmTimer) {
+            clearTimeout(settingsArmTimer);
+            settingsArmTimer = null;
+          }
+
+          longPressTimer = setTimeout(() => {
+            if (!isButtonDown()) {
+              return;
+            }
+
+            longPressHandled = true;
+            resetTapState();
+            ctx.currentSettingsMenuIndex = 0;
+            ctx.transitionTo("settings_menu");
+          }, 700);
+          return;
+        }
+
+        const canStartNicknameHold =
           tapCount === 1 &&
-          Boolean(tapTimer);
+          Boolean(tapTimer) &&
+          Boolean(ctx.currentHomeSelectionId);
 
-        const shouldOpenSettings =
-          canStartSecretHold && !ctx.currentHomeSelectionId;
-
-        const shouldOpenNickname =
-          canStartSecretHold && Boolean(ctx.currentHomeSelectionId);
-
-        if (canStartSecretHold) {
-          renameHoldCandidate = shouldOpenNickname;
+        if (canStartNicknameHold) {
+          renameHoldCandidate = true;
 
           if (tapTimer) {
             clearTimeout(tapTimer);
@@ -116,16 +151,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
             if (!isButtonDown()) {
               return;
             }
-
             longPressHandled = true;
             renameHoldCandidate = false;
             resetTapState();
-
-            if (shouldOpenSettings) {
-              ctx.currentSettingsMenuIndex = 0;
-              ctx.transitionTo("settings_menu");
-              return;
-            }
 
             const nicknameMode = ctx.shouldAllowRenameNickname()
               ? "rename"
@@ -156,6 +184,26 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           longPressTimer = null;
         }
 
+        if (settingsHoldInProgress) {
+          settingsHoldInProgress = false;
+          settingsHoldArmed = false;
+
+          if (longPressHandled) {
+            return;
+          }
+
+          resetTapState();
+
+          if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
+            ctx.prepareNicknameTargetFromHomeSelection("create");
+            ctx.transitionTo("nickname_prompt");
+            return;
+          }
+
+          ctx.transitionTo("thread_view");
+          return;
+        }
+
         if (longPressHandled) {
           return;
         }
@@ -175,16 +223,30 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         }
 
         if (tapCount === 2) {
-          ctx.recordUserInteraction();
-          resetTapState();
-
-          if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
-            ctx.prepareNicknameTargetFromHomeSelection("create");
-            ctx.transitionTo("nickname_prompt");
-            return;
+          if (tapTimer) {
+            clearTimeout(tapTimer);
+            tapTimer = null;
           }
 
-          ctx.transitionTo("thread_view");
+          tapCount = 0;
+          settingsHoldArmed = true;
+
+          if (settingsArmTimer) {
+            clearTimeout(settingsArmTimer);
+          }
+
+          settingsArmTimer = setTimeout(() => {
+            settingsHoldArmed = false;
+            settingsArmTimer = null;
+
+            if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
+              ctx.prepareNicknameTargetFromHomeSelection("create");
+              ctx.transitionTo("nickname_prompt");
+              return;
+            }
+
+            ctx.transitionTo("thread_view");
+          }, 500);
         }
       });
 
@@ -195,14 +257,16 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         ctx.recordUserInteraction();
         ctx.answerId += 1;
         ctx.asrText = text;
-        display({ status: "recognizing", text, text_input_enabled: false });
+        display({
+          status: "recognizing",
+          text,
+          text_input_enabled: false,
+          brightness: ctx.getAwakeBrightness(),
+        });
         ctx.transitionTo("review_outgoing");
       });
 
-      if (
-        !ctx.currentIncomingMessage &&
-        ctx.incomingMessageQueue.length > 0
-      ) {
+      if (!ctx.currentIncomingMessage && ctx.incomingMessageQueue.length > 0) {
         ctx.currentIncomingMessage = ctx.incomingMessageQueue.shift() || null;
         ctx.transitionTo("incoming_message");
         return;
@@ -214,23 +278,28 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonPressed(() => {
       resetCameraModeControl();
-      // Stop any playing music when waking up
       stopMusicPlayback();
       ctx.transitionTo("listening");
     });
     onButtonReleased(noop);
     onCameraModeExit(null);
     onTextInput((text: string) => {
-	  if (ctx.currentFlowName !== "sleep") return;
+      if (ctx.currentFlowName !== "sleep") return;
       ctx.answerId += 1;
       ctx.asrText = text;
-      display({ status: "recognizing", text, text_input_enabled: false });
+      display({
+        status: "recognizing",
+        text,
+        text_input_enabled: false,
+        brightness: ctx.getAwakeBrightness(),
+      });
       if (ctx.appMode === "meshtastic") {
         ctx.transitionTo("review_outgoing");
       } else {
         ctx.transitionTo("answer");
       }
     });
+
     if (ctx.enableCamera) {
       const captureImgPath = `${cameraDir}/capture-${moment().format(
         "YYYYMMDD-HHmmss",
@@ -245,23 +314,21 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       status: "idle",
       emoji: "😴",
       RGB: "#000055",
+      brightness: ctx.getAwakeBrightness(),
       rag_icon_visible: false,
       ...(getCurrentStatus().text.endsWith("Listening...") || !getCurrentStatus().text
         ? {
-            text: `Long Press the button to say something${ctx.enableCamera ? ",\ndouble click to launch camera" : ""
-              }.`,
+            text: `Long Press the button to say something${ctx.enableCamera ? ",\ndouble click to launch camera" : ""}.`,
           }
         : {}),
     });
   },
-  
+
   dormant: (ctx: ChatFlowContext) => {
     onButtonDoubleClick(null);
 
     onButtonPressed(() => {
-      ctx.recordUserInteraction();
-      ctx.cancelAutoReturnToDormant();
-      ctx.transitionTo("sleep");
+      ctx.wakeFromDormant();
     });
 
     onButtonReleased(noop);
@@ -308,6 +375,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         status: "settings",
         emoji: "⚙️",
         RGB: "#3355aa",
+        brightness: ctx.getAwakeBrightness(),
         header_text: "Settings",
         header_color: "#00c8a3",
         body_text: bodyText,
@@ -374,97 +442,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     renderSettingsScreen();
-  },  
-  
-  settings_menu: (ctx: ChatFlowContext) => {
-    let longPressTimer: NodeJS.Timeout | null = null;
-    let longPressHandled = false;
-    let tapCount = 0;
-    let tapTimer: NodeJS.Timeout | null = null;
+  },
 
-    const resetTapState = () => {
-      tapCount = 0;
-      if (tapTimer) {
-        clearTimeout(tapTimer);
-        tapTimer = null;
-      }
-    };
-
-    const renderSettingsScreen = () => {
-      const bodyText = ctx.getSettingsMenuText();
-
-      display({
-        status: "settings",
-        emoji: "⚙️",
-        RGB: "#3355aa",
-        header_text: "Settings",
-        header_color: "#00c8a3",
-        body_text: bodyText,
-        body_color: "#FFFFFF",
-        footer_text: buildFooterLegend({
-          single: "next",
-          double: "change",
-          long: "exit",
-        }),
-        footer_color: FOOTER_LEGEND_COLOR,
-        body_frame_visible: true,
-        body_frame_color: "#444444",
-        text: bodyText,
-      });
-    };
-
-    onButtonDoubleClick(null);
-
-    onButtonPressed(() => {
-      ctx.recordUserInteraction();
-      longPressHandled = false;
-
-      longPressTimer = setTimeout(() => {
-        if (!isButtonDown()) {
-          return;
-        }
-
-        longPressHandled = true;
-        resetTapState();
-        ctx.transitionTo("sleep");
-      }, 900);
-    });
-
-    onButtonReleased(() => {
-      ctx.recordUserInteraction();
-
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-
-      if (longPressHandled) {
-        return;
-      }
-
-      tapCount += 1;
-
-      if (tapCount === 1) {
-        tapTimer = setTimeout(() => {
-          if (tapCount === 1) {
-            ctx.cycleSettingsMenuSelection();
-            renderSettingsScreen();
-          }
-          resetTapState();
-        }, 450);
-        return;
-      }
-
-      if (tapCount === 2) {
-        resetTapState();
-        ctx.adjustSelectedSetting();
-        renderSettingsScreen();
-      }
-    });
-
-    renderSettingsScreen();
-  },  
-  
   camera: (ctx: ChatFlowContext) => {
     onButtonDoubleClick(null);
     onButtonPressed(() => {
@@ -491,20 +470,22 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       status: "camera",
       emoji: "📷",
       RGB: "#00ff88",
+      brightness: ctx.getAwakeBrightness(),
     });
   },
+
   music: (ctx: ChatFlowContext) => {
-    // Start deferred music playback when entering music state
     startPendingMusicPlayback();
 
-    // Update display when track changes during continuous playback
     onMusicTrackChange((title) => {
       if (ctx.currentFlowName === "music") {
-        display({ text: `Now playing: ${title}` });
+        display({
+          text: `Now playing: ${title}`,
+          brightness: ctx.getAwakeBrightness(),
+        });
       }
     });
 
-    // Return to sleep when non-continuous playback finishes
     onMusicPlaybackEnd(() => {
       if (ctx.currentFlowName === "music") {
         onMusicTrackChange(null);
@@ -515,7 +496,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonDoubleClick(null);
     onButtonPressed(() => {
-      // Stop music immediately when button is pressed
       onMusicTrackChange(null);
       onMusicPlaybackEnd(null);
       stopMusicPlayback();
@@ -528,6 +508,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       status: "music",
       emoji: "🎹",
       RGB: "#0066aa",
+      brightness: ctx.getAwakeBrightness(),
       text:
         ctx.musicDisplayText ||
         (isMusicPlaying() && trackTitle
@@ -536,6 +517,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       rag_icon_visible: false,
     });
   },
+
   listening: (ctx: ChatFlowContext) => {
     ctx.enterMusicAfterAnswer = false;
     ctx.musicDisplayText = "";
@@ -614,6 +596,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       display({
         RGB: "#ff6800",
         image: "",
+        brightness: ctx.getAwakeBrightness(),
       });
 
       asrFallbackTimer = setTimeout(() => {
@@ -647,6 +630,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       status: "listening",
       emoji: DEFAULT_EMOJI,
       RGB: "#00ff00",
+      brightness: ctx.getAwakeBrightness(),
       text: "Listening...",
       footer_text: buildFooterLegend({
         long: "release to transcribe",
@@ -655,13 +639,13 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       rag_icon_visible: false,
     });
   },
+
   wake_listening: (ctx: ChatFlowContext) => {
     ctx.enterMusicAfterAnswer = false;
     ctx.musicDisplayText = "";
     ctx.isFromWakeListening = true;
     ctx.answerId += 1;
-    ctx.currentRecordFilePath = `${ctx.recordingsDir
-      }/user-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = `${ctx.recordingsDir}/user-${Date.now()}.${recordFileFormat}`;
     onButtonPressed(() => {
       ctx.transitionTo("listening");
     });
@@ -670,6 +654,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       status: "detecting",
       emoji: DEFAULT_EMOJI,
       RGB: "#00ff00",
+      brightness: ctx.getAwakeBrightness(),
       text: "Detecting voice level...",
       rag_icon_visible: false,
     });
@@ -678,6 +663,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         status: "listening",
         emoji: DEFAULT_EMOJI,
         RGB: "#00ff00",
+        brightness: ctx.getAwakeBrightness(),
         text: `(Detect level: ${level}%) Listening...`,
         rag_icon_visible: false,
       });
@@ -692,9 +678,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         });
     });
   },
+
   asr: (ctx: ChatFlowContext) => {
     display({
       status: "recognizing",
+      brightness: ctx.getAwakeBrightness(),
     });
     onButtonDoubleClick(null);
     Promise.race([
@@ -717,23 +705,31 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         if (ctx.recordingPurpose === "nickname") {
           ctx.nicknameDraftText = result;
           ctx.recordingPurpose = "message";
-          display({ status: "recognizing", text: result });
+          display({
+            status: "recognizing",
+            text: result,
+            brightness: ctx.getAwakeBrightness(),
+          });
           ctx.transitionTo("review_nickname");
           return;
         }
 
-		ctx.asrText = result;
-		ctx.endAfterAnswer = ctx.shouldEndAfterAnswer(result);
-		if (ctx.wakeSessionActive) {
-		  ctx.wakeSessionLastSpeechAt = Date.now();
-		}
-		display({ status: "recognizing", text: result });
-		if (ctx.appMode === "meshtastic") {
-		  ctx.transitionTo("review_outgoing");
-		} else {
-		  ctx.transitionTo("answer");
-		}
-		return;
+        ctx.asrText = result;
+        ctx.endAfterAnswer = ctx.shouldEndAfterAnswer(result);
+        if (ctx.wakeSessionActive) {
+          ctx.wakeSessionLastSpeechAt = Date.now();
+        }
+        display({
+          status: "recognizing",
+          text: result,
+          brightness: ctx.getAwakeBrightness(),
+        });
+        if (ctx.appMode === "meshtastic") {
+          ctx.transitionTo("review_outgoing");
+        } else {
+          ctx.transitionTo("answer");
+        }
+        return;
       }
       if (ctx.recordingPurpose === "nickname") {
         ctx.transitionTo("nickname_prompt");
@@ -752,167 +748,174 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       ctx.transitionTo("sleep");
     });
   },
- review_outgoing: (ctx: ChatFlowContext) => {
-  let longPressTimer: NodeJS.Timeout | null = null;
-  let longPressHandled = false;
-  let tapCount = 0;
-  let tapTimer: NodeJS.Timeout | null = null;
-  let isSending = false;
 
-  ctx.initializeOutgoingRecipientSelection();
+  review_outgoing: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+    let tapCount = 0;
+    let tapTimer: NodeJS.Timeout | null = null;
+    let isSending = false;
 
-  const renderReviewScreen = () => {
-    const recipientLabel = ctx.getOutgoingRecipientLabel();
+    ctx.initializeOutgoingRecipientSelection();
 
-    display({
-      status: "review",
-      emoji: "📝",
-      RGB: "#ffaa00",
-      header_text: `To: ${recipientLabel}`,
-      header_color: "#00c8a3",
-      body_text: ctx.asrText,
-      body_color: "#FFFFFF",
-      footer_text: buildFooterLegend({
-        single: "switch To:",
-        double: "send",
-        long: "discard",
-      }),
-      footer_color: FOOTER_LEGEND_COLOR,
-      text: `To: ${recipientLabel}\n${ctx.asrText}`,
-      rag_icon_visible: false,
-    });
-  };
+    const renderReviewScreen = () => {
+      const recipientLabel = ctx.getOutgoingRecipientLabel();
 
-  const resetTapState = () => {
-    tapCount = 0;
-    if (tapTimer) {
-      clearTimeout(tapTimer);
-      tapTimer = null;
-    }
-  };
+      display({
+        status: "review",
+        emoji: "📝",
+        RGB: "#ffaa00",
+        brightness: ctx.getAwakeBrightness(),
+        header_text: `To: ${recipientLabel}`,
+        header_color: "#00c8a3",
+        body_text: ctx.asrText,
+        body_color: "#FFFFFF",
+        footer_text: buildFooterLegend({
+          single: "switch To:",
+          double: "send",
+          long: "discard",
+        }),
+        footer_color: FOOTER_LEGEND_COLOR,
+        text: `To: ${recipientLabel}\n${ctx.asrText}`,
+        rag_icon_visible: false,
+      });
+    };
 
-  const discardAndReturnToSleep = () => {
-    resetTapState();
-    ctx.asrText = "";
-    display({
-      status: "idle",
-      emoji: "😴",
-      RGB: "#000055",
-      text: "Message discarded.",
-      footer_text: "",
-      footer_color: FOOTER_LEGEND_COLOR,
-    });
-    setTimeout(() => {
-      if (ctx.currentFlowName === "review_outgoing") {
-        ctx.transitionTo("sleep");
+    const resetTapState = () => {
+      tapCount = 0;
+      if (tapTimer) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
       }
-    }, 800);
-  };
+    };
 
-  const sendMessage = async () => {
-    if (isSending) return;
-    isSending = true;
-    resetTapState();
-
-    display({
-      status: "sending",
-      emoji: "📡",
-      RGB: "#00c8a3",
-      text: "Sending...",
-      footer_text: "",
-      footer_color: FOOTER_LEGEND_COLOR,
-    });
-
-    if (!ctx.meshtasticService) {
+    const discardAndReturnToSleep = () => {
+      resetTapState();
+      ctx.asrText = "";
       display({
-        status: "error",
-        emoji: "⚠️",
-        RGB: "#ff0000",
-        text: "Meshtastic service unavailable.",
+        status: "idle",
+        emoji: "😴",
+        RGB: "#000055",
+        brightness: ctx.getAwakeBrightness(),
+        text: "Message discarded.",
         footer_text: "",
         footer_color: FOOTER_LEGEND_COLOR,
       });
-      setTimeout(() => ctx.transitionTo("sleep"), 1500);
-      return;
-    }
+      setTimeout(() => {
+        if (ctx.currentFlowName === "review_outgoing") {
+          ctx.transitionTo("sleep");
+        }
+      }, 800);
+    };
 
-    const result = await ctx.meshtasticService.sendText(
-      ctx.asrText,
-      ctx.currentOutgoingRecipientId,
-    );
-
-    if (result.ok) {
-      ctx.appendOutgoingThreadMessage(ctx.asrText, ctx.currentOutgoingRecipientId);
+    const sendMessage = async () => {
+      if (isSending) return;
+      isSending = true;
+      resetTapState();
 
       display({
-        status: "sent",
-        emoji: "✅",
-        RGB: "#00aa55",
-        text: "Message sent.",
+        status: "sending",
+        emoji: "📡",
+        RGB: "#00c8a3",
+        brightness: ctx.getAwakeBrightness(),
+        text: "Sending...",
         footer_text: "",
         footer_color: FOOTER_LEGEND_COLOR,
       });
-    } else {
-      display({
-        status: "error",
-        emoji: "⚠️",
-        RGB: "#ff0000",
-        text: result.error || "Send failed.",
-        footer_text: "",
-        footer_color: FOOTER_LEGEND_COLOR,
-      });
-    }
 
-    setTimeout(() => {
-      ctx.transitionTo("sleep");
-    }, 1500);
-  };
-
-  onButtonDoubleClick(null);
-
-  onButtonPressed(() => {
-    if (isSending) return;
-    longPressTimer = setTimeout(() => {
-      if (!isButtonDown()) {
+      if (!ctx.meshtasticService) {
+        display({
+          status: "error",
+          emoji: "⚠️",
+          RGB: "#ff0000",
+          brightness: ctx.getAwakeBrightness(),
+          text: "Meshtastic service unavailable.",
+          footer_text: "",
+          footer_color: FOOTER_LEGEND_COLOR,
+        });
+        setTimeout(() => ctx.transitionTo("sleep"), 1500);
         return;
       }
-      longPressHandled = true;
-      discardAndReturnToSleep();
-    }, 1200);
-  });
 
-  onButtonReleased(() => {
-    if (isSending) return;
+      const result = await ctx.meshtasticService.sendText(
+        ctx.asrText,
+        ctx.currentOutgoingRecipientId,
+      );
 
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-    }
+      if (result.ok) {
+        ctx.appendOutgoingThreadMessage(ctx.asrText, ctx.currentOutgoingRecipientId);
 
-    if (longPressHandled) {
-      return;
-    }
+        display({
+          status: "sent",
+          emoji: "✅",
+          RGB: "#00aa55",
+          brightness: ctx.getAwakeBrightness(),
+          text: "Message sent.",
+          footer_text: "",
+          footer_color: FOOTER_LEGEND_COLOR,
+        });
+      } else {
+        display({
+          status: "error",
+          emoji: "⚠️",
+          RGB: "#ff0000",
+          brightness: ctx.getAwakeBrightness(),
+          text: result.error || "Send failed.",
+          footer_text: "",
+          footer_color: FOOTER_LEGEND_COLOR,
+        });
+      }
 
-    tapCount += 1;
+      setTimeout(() => {
+        ctx.transitionTo("sleep");
+      }, 1500);
+    };
 
-    if (tapCount === 1) {
-      tapTimer = setTimeout(() => {
-        if (tapCount === 1) {
-          ctx.cycleOutgoingRecipient();
-          renderReviewScreen();
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      if (isSending) return;
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
         }
-        resetTapState();
-      }, 700);
-      return;
-    }
+        longPressHandled = true;
+        discardAndReturnToSleep();
+      }, 1200);
+    });
 
-    if (tapCount === 2) {
-      void sendMessage();
-    }
-  });
+    onButtonReleased(() => {
+      if (isSending) return;
 
-  renderReviewScreen();
-},
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      tapCount += 1;
+
+      if (tapCount === 1) {
+        tapTimer = setTimeout(() => {
+          if (tapCount === 1) {
+            ctx.cycleOutgoingRecipient();
+            renderReviewScreen();
+          }
+          resetTapState();
+        }, 700);
+        return;
+      }
+
+      if (tapCount === 2) {
+        void sendMessage();
+      }
+    });
+
+    renderReviewScreen();
+  },
 
   nickname_prompt: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
@@ -969,6 +972,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       status: promptStatus,
       emoji: "🏷️",
       RGB: "#6633aa",
+      brightness: ctx.getAwakeBrightness(),
       header_text: `Recipient: ${ctx.getNicknameTargetLabel()}`,
       header_color: "#00c8a3",
       body_text: promptBody,
@@ -1009,6 +1013,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         status: isRenameFlow ? "rename" : "nickname",
         emoji: "🏷️",
         RGB: "#6633aa",
+        brightness: ctx.getAwakeBrightness(),
         header_text: `${isRenameFlow ? "Rename nickname for" : "Nickname for"}: ${targetLabel}`,
         header_color: "#00c8a3",
         body_text: formattedNickname,
@@ -1046,6 +1051,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           status: "error",
           emoji: "⚠️",
           RGB: "#ff0000",
+          brightness: ctx.getAwakeBrightness(),
           text: error?.message || "Nickname save failed.",
           footer_text: "",
           footer_color: FOOTER_LEGEND_COLOR,
@@ -1067,6 +1073,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         status: "saved",
         emoji: "✅",
         RGB: "#00aa55",
+        brightness: ctx.getAwakeBrightness(),
         text: `Nickname saved: ${savedLabel}`,
         footer_text: "",
         footer_color: FOOTER_LEGEND_COLOR,
@@ -1134,8 +1141,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
   thread_view: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
-	    ctx.markThreadRead(ctx.currentHomeSelectionId);
-		ctx.recordUserInteraction();
+    ctx.markThreadRead(ctx.currentHomeSelectionId);
+    ctx.recordUserInteraction();
     let longPressHandled = false;
     let tapCount = 0;
     let tapTimer: NodeJS.Timeout | null = null;
@@ -1161,6 +1168,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         emoji: "",
         top_center_text: "{time}",
         RGB: "#000055",
+        brightness: ctx.getAwakeBrightness(),
         rag_icon_visible: false,
         header_text: "",
         header_color: "#AAAAAA",
@@ -1188,17 +1196,17 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     onButtonPressed(() => {
-	  ctx.recordUserInteraction();
+      ctx.recordUserInteraction();
       longPressHandled = false;
-        longPressTimer = setTimeout(() => {
-          if (!isButtonDown()) {
-            return;
-          }
-          longPressHandled = true;
-          resetTapState();
-          ctx.recordingPurpose = "message";
-          ctx.transitionTo("listening");
-        }, 700);
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
+        }
+        longPressHandled = true;
+        resetTapState();
+        ctx.recordingPurpose = "message";
+        ctx.transitionTo("listening");
+      }, 700);
     });
 
     onButtonReleased(() => {
@@ -1248,17 +1256,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     }
 
     const dismissCurrentMessage = () => {
-      ctx.cancelAutoReturnToDormant();
-      ctx.markCurrentIncomingThreadRead();
-
-      ctx.currentIncomingMessage = null;
-
-      if (ctx.incomingMessageQueue.length > 0) {
-        ctx.currentIncomingMessage = ctx.incomingMessageQueue.shift() || null;
-        ctx.transitionTo("incoming_message");
-      } else {
-        ctx.transitionTo("sleep");
-      }
+      ctx.dismissCurrentIncomingMessage();
     };
 
     onButtonDoubleClick(null);
@@ -1272,6 +1270,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       status: "incoming",
       emoji: "📨",
       RGB: "#0088ff",
+      brightness: ctx.getAwakeBrightness(),
       rag_icon_visible: false,
       header_text: `${ctx.currentIncomingMessage.fromDisplay}  ${ctx.currentIncomingMessage.routeTag}  ${ctx.currentIncomingMessage.receivedAtDisplay}`,
       header_color: "#ff5555",
@@ -1291,18 +1290,19 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     display({
       status: "answering...",
       RGB: "#00c8a3",
+      brightness: ctx.getAwakeBrightness(),
     });
     const currentAnswerId = ctx.answerId;
     if (isImMode) {
       const prompt: {
         role: "system" | "user";
         content: string;
-      }[] = [
-          {
-            role: "user",
-            content: ctx.asrText,
-          },
-        ];
+      }[] = compact([
+        {
+          role: "user",
+          content: ctx.asrText,
+        },
+      ]);
       sendWhisplayIMMessage(prompt)
         .then((ok) => {
           if (ok) {
@@ -1310,6 +1310,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
               status: "idle",
               emoji: "😊",
               RGB: "#000055",
+              brightness: ctx.getAwakeBrightness(),
               image_icon_visible: false,
             });
           } else {
@@ -1317,6 +1318,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
               status: "error",
               emoji: "⚠️",
               text: "OpenClaw send failed",
+              brightness: ctx.getAwakeBrightness(),
               image_icon_visible: false,
             });
           }
@@ -1339,8 +1341,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     } = ctx.streamResponser;
     ctx.partialThinking = "";
     ctx.thinkingSentences = [];
-    [() => Promise.resolve().then(() => ""), getSystemPromptWithKnowledge]
-    [enableRAG ? 1 : 0](ctx.asrText)
+    [() => Promise.resolve().then(() => ""), getSystemPromptWithKnowledge][enableRAG ? 1 : 0](ctx.asrText)
       .then((res: string) => {
         let knowledgePrompt = res;
         if (res) {
@@ -1364,9 +1365,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         }[] = compact([
           knowledgePrompt
             ? {
-              role: "system",
-              content: knowledgePrompt,
-            }
+                role: "system",
+                content: knowledgePrompt,
+              }
             : null,
           {
             role: "user",
@@ -1406,10 +1407,12 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
             if (result) {
               display({
                 text: `[${functionName}]${result}`,
+                brightness: ctx.getAwakeBrightness(),
               });
             } else {
               display({
                 text: `Invoking [${functionName}]... {count}s`,
+                brightness: ctx.getAwakeBrightness(),
               });
             }
           },
@@ -1448,6 +1451,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
   },
+
   image: (ctx: ChatFlowContext) => {
     onButtonPressed(() => {
       display({ image: "" });
@@ -1455,6 +1459,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
   },
+
   external_answer: (ctx: ChatFlowContext) => {
     if (!ctx.pendingExternalReply && !ctx.pendingExternalImageUrl) {
       ctx.transitionTo("sleep");
@@ -1463,6 +1468,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     display({
       status: "answering...",
       RGB: "#00c8a3",
+      brightness: ctx.getAwakeBrightness(),
       ...(ctx.pendingExternalEmoji ? { emoji: ctx.pendingExternalEmoji } : {}),
     });
     onButtonPressed(() => {
@@ -1479,7 +1485,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     ctx.pendingExternalEmoji = "";
     ctx.pendingExternalImageUrl = "";
 
-    // Display the image if one was provided
     if (replyImageUrl) {
       display({ image: replyImageUrl });
     }
@@ -1496,14 +1501,12 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
             ctx.transitionTo("wake_listening");
           }
         } else if (replyImageUrl) {
-          // Stay in image display mode after TTS finishes
           ctx.transitionTo("image");
         } else {
           ctx.transitionTo("sleep");
         }
       });
     } else {
-      // Image only, no text to speak — go to image display mode
       ctx.transitionTo("image");
     }
   },

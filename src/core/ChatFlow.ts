@@ -22,7 +22,7 @@ import { threadHistoryStore } from "../meshtastic/threadHistory";
 import { playWakeupChime, playIncomingMessageChime } from "../device/audio";
 import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
-import { settingsStore } from "./settingsStore";
+import { settingsStore, AWAKE_BRIGHTNESS_OPTIONS } from "./settingsStore";
 import type { AppSettings } from "./settingsStore";
 
 
@@ -76,6 +76,9 @@ class ChatFlow implements ChatFlowContext {
   private dormantTimer: NodeJS.Timeout | null = null;
   private incomingWakeTimer: NodeJS.Timeout | null = null;
   private autoReturnToDormant = false;
+  private flowBeforeDormant: FlowName = "sleep";
+  private incomingPreviewReturnFlow: FlowName = "sleep";
+  private bootDormantBlockedUntil: number = Date.now() + 120000;
   nicknameDraftText: string = "";
   nicknameFlowMode: "create" | "rename" = "create";
   recordingPurpose: "message" | "nickname" = "message";
@@ -336,6 +339,10 @@ class ChatFlow implements ChatFlowContext {
     return selected?.label || "Channel";
   };
   
+  getAwakeBrightness = (): number => {
+    return this.settings.awakeBrightness;
+  };
+  
     resetThreadPage = (): void => {
     this.currentThreadPage = 0;
   };
@@ -490,7 +497,16 @@ class ChatFlow implements ChatFlowContext {
   recordUserInteraction = (): void => {
     this.lastUserInteractionAt = Date.now();
 
-    if (["sleep", "thread_view"].includes(this.currentFlowName)) {
+    if (
+      [
+        "sleep",
+        "thread_view",
+        "review_outgoing",
+        "nickname_prompt",
+        "review_nickname",
+        "settings_menu",
+      ].includes(this.currentFlowName)
+    ) {
       this.scheduleDormantTimer();
     }
   };
@@ -498,7 +514,15 @@ class ChatFlow implements ChatFlowContext {
   shouldEnterDormant = (): boolean => {
     return (
       this.appMode === "meshtastic" &&
-      ["sleep", "thread_view"].includes(this.currentFlowName) &&
+      Date.now() >= this.bootDormantBlockedUntil &&
+      [
+        "sleep",
+        "thread_view",
+        "review_outgoing",
+        "nickname_prompt",
+        "review_nickname",
+        "settings_menu",
+      ].includes(this.currentFlowName) &&
       !this.currentIncomingMessage
     );
   };
@@ -568,7 +592,6 @@ class ChatFlow implements ChatFlowContext {
         this.currentFlowName === "incoming_message" &&
         this.autoReturnToDormant
       ) {
-        this.currentIncomingMessage = null;
         this.transitionTo("dormant");
       }
     }, wakeMs);
@@ -579,11 +602,69 @@ class ChatFlow implements ChatFlowContext {
     this.incomingWakeDeadlineAt = 0;
     this.clearIncomingWakeTimer();
   };
+  
+    wakeFromDormant = (): void => {
+    this.recordUserInteraction();
+
+    if (this.currentIncomingMessage) {
+      this.autoReturnToDormant = false;
+      this.incomingWakeDeadlineAt = 0;
+      this.clearIncomingWakeTimer();
+      this.transitionTo("incoming_message");
+      return;
+    }
+
+    const targetFlow =
+      this.flowBeforeDormant &&
+      this.flowBeforeDormant !== "dormant" &&
+      this.flowBeforeDormant !== "incoming_message"
+        ? this.flowBeforeDormant
+        : "sleep";
+
+    this.transitionTo(targetFlow);
+  };
+
+  dismissCurrentIncomingMessage = (): void => {
+    this.cancelAutoReturnToDormant();
+    this.markCurrentIncomingThreadRead();
+    this.currentIncomingMessage = null;
+
+    if (this.incomingMessageQueue.length > 0) {
+      this.currentIncomingMessage = this.incomingMessageQueue.shift() || null;
+      this.transitionTo("incoming_message");
+      return;
+    }
+
+    const targetFlow =
+      this.incomingPreviewReturnFlow &&
+      this.incomingPreviewReturnFlow !== "dormant" &&
+      this.incomingPreviewReturnFlow !== "incoming_message"
+        ? this.incomingPreviewReturnFlow
+        : "sleep";
+
+    this.transitionTo(targetFlow);
+  };
 
   private configurePostTransition = (
     previousFlowName: FlowName,
     nextFlowName: FlowName,
   ): void => {
+    if (
+      nextFlowName === "dormant" &&
+      previousFlowName !== "dormant" &&
+      previousFlowName !== "incoming_message"
+    ) {
+      this.flowBeforeDormant = previousFlowName;
+    }
+
+    if (
+      nextFlowName === "incoming_message" &&
+      previousFlowName !== "incoming_message" &&
+      previousFlowName !== "dormant"
+    ) {
+      this.incomingPreviewReturnFlow = previousFlowName;
+    }
+
     if (nextFlowName === "incoming_message" && this.autoReturnToDormant) {
       this.scheduleIncomingWakeTimer();
     } else {
@@ -595,7 +676,16 @@ class ChatFlow implements ChatFlowContext {
       }
     }
 
-    if (["sleep", "thread_view"].includes(nextFlowName)) {
+    if (
+      [
+        "sleep",
+        "thread_view",
+        "review_outgoing",
+        "nickname_prompt",
+        "review_nickname",
+        "settings_menu",
+      ].includes(nextFlowName)
+    ) {
       this.scheduleDormantTimer();
     } else {
       this.clearDormantTimer();
@@ -605,6 +695,7 @@ class ChatFlow implements ChatFlowContext {
   getSettingsMenuText = (): string => {
     const lines = [
       `Sound: ${this.settings.soundEnabled ? "On" : "Off"}`,
+      `Brightness: ${this.settings.awakeBrightness}%`,
       `Dormant timeout: ${this.settings.dormantTimeoutSeconds}s`,
       `Incoming wake: ${this.settings.incomingWakeSeconds}s`,
     ];
@@ -617,7 +708,7 @@ class ChatFlow implements ChatFlowContext {
   };
 
   cycleSettingsMenuSelection = (): void => {
-    const menuLength = 3;
+    const menuLength = 4;
     this.currentSettingsMenuIndex =
       (this.currentSettingsMenuIndex + 1) % menuLength;
   };
@@ -634,10 +725,25 @@ class ChatFlow implements ChatFlowContext {
     }
 
     if (this.currentSettingsMenuIndex === 1) {
+      const currentIndex = AWAKE_BRIGHTNESS_OPTIONS.indexOf(
+        this.settings.awakeBrightness as (typeof AWAKE_BRIGHTNESS_OPTIONS)[number],
+      );
+      const nextIndex =
+        currentIndex >= 0 ? (currentIndex + 1) % AWAKE_BRIGHTNESS_OPTIONS.length : 0;
+
+      this.settings = settingsStore.updateSettings({
+        awakeBrightness: AWAKE_BRIGHTNESS_OPTIONS[nextIndex],
+      });
+      return;
+    }
+
+    if (this.currentSettingsMenuIndex === 2) {
       const currentIndex = dormantOptions.indexOf(
         this.settings.dormantTimeoutSeconds,
       );
-      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % dormantOptions.length : 0;
+      const nextIndex =
+        currentIndex >= 0 ? (currentIndex + 1) % dormantOptions.length : 0;
+
       this.settings = settingsStore.updateSettings({
         dormantTimeoutSeconds: dormantOptions[nextIndex],
       });
@@ -645,7 +751,7 @@ class ChatFlow implements ChatFlowContext {
       return;
     }
 
-    if (this.currentSettingsMenuIndex === 2) {
+    if (this.currentSettingsMenuIndex === 3) {
       const currentIndex = incomingWakeOptions.indexOf(
         this.settings.incomingWakeSeconds,
       );
@@ -656,7 +762,7 @@ class ChatFlow implements ChatFlowContext {
         incomingWakeSeconds: incomingWakeOptions[nextIndex],
       });
     }
-  };  
+  };
 
   private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
@@ -723,7 +829,13 @@ class ChatFlow implements ChatFlowContext {
     }
 
     if (this.currentFlowName === "dormant") {
-      this.currentIncomingMessage = displayMessage;
+      if (!this.currentIncomingMessage) {
+        this.currentIncomingMessage = displayMessage;
+      } else {
+        this.incomingMessageQueue.push(displayMessage);
+      }
+
+      this.incomingPreviewReturnFlow = this.flowBeforeDormant || "sleep";
       this.autoReturnToDormant = true;
       this.transitionTo("incoming_message");
       return;
@@ -750,14 +862,14 @@ class ChatFlow implements ChatFlowContext {
       return;
     }
 
-    this.incomingMessageQueue.push(displayMessage);
-
     if (!isBusy && !this.currentIncomingMessage) {
-      this.currentIncomingMessage = this.incomingMessageQueue.shift() || null;
-      if (this.currentIncomingMessage) {
-        this.transitionTo("incoming_message");
-      }
+      this.currentIncomingMessage = displayMessage;
+      this.incomingPreviewReturnFlow = this.currentFlowName;
+      this.transitionTo("incoming_message");
+      return;
     }
+
+    this.incomingMessageQueue.push(displayMessage);
   };
 
   private attachMeshtasticCleanup = (): void => {
