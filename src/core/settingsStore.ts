@@ -36,7 +36,7 @@ function normalizeBrightness(value: unknown): number {
     return fallback;
   }
 
-  let closest = AWAKE_BRIGHTNESS_OPTIONS[0];
+  let closest: number = AWAKE_BRIGHTNESS_OPTIONS[0];
   let closestDistance = Math.abs(numeric - closest);
 
   for (const option of AWAKE_BRIGHTNESS_OPTIONS) {

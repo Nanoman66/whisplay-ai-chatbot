@@ -96,6 +96,7 @@ export interface ChatFlowContext {
   initializeOutgoingRecipientSelection: () => void;
   cycleOutgoingRecipient: () => void;
   getOutgoingRecipientLabel: () => string;
+  getAwakeBrightness: () => number;
   streamExternalReply: (text: string, emoji?: string) => Promise<void>;
   resetThreadPage: () => void;
   cycleThreadPage: () => void;
@@ -118,6 +119,8 @@ export interface ChatFlowContext {
   markThreadRead: (nodeId: string | null) => void;
   markCurrentIncomingThreadRead: () => void;
   cancelAutoReturnToDormant: () => void;
+  wakeFromDormant: () => void;
+  dismissCurrentIncomingMessage: () => void;
 
   getSettingsMenuText: () => string;
   cycleSettingsMenuSelection: () => void;
