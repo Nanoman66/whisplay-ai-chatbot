@@ -19,9 +19,11 @@ import { MeshtasticService } from "../meshtastic";
 import type { MeshTextMessage } from "../meshtastic";
 import { nicknameStore } from "../meshtastic/nicknameStore";
 import { threadHistoryStore } from "../meshtastic/threadHistory";
-import { playWakeupChime } from "../device/audio";
+import { playWakeupChime, playIncomingMessageChime } from "../device/audio";
 import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
+import { settingsStore } from "./settingsStore";
+import type { AppSettings } from "./settingsStore";
 
 
 dotEnv.config();
@@ -65,6 +67,15 @@ class ChatFlow implements ChatFlowContext {
   currentHomeSelectionId: string | null = null;
   currentOutgoingRecipientId: string | null = null;
   currentNicknameTargetId: string | null = null;
+  settings: AppSettings = settingsStore.getSettings();
+  hasUnread: boolean = false;
+  unreadThreadKeys = new Set<string>();
+  lastUserInteractionAt: number = Date.now();
+  incomingWakeDeadlineAt: number = 0;
+  currentSettingsMenuIndex: number = 0;
+  private dormantTimer: NodeJS.Timeout | null = null;
+  private incomingWakeTimer: NodeJS.Timeout | null = null;
+  private autoReturnToDormant = false;
   nicknameDraftText: string = "";
   nicknameFlowMode: "create" | "rename" = "create";
   recordingPurpose: "message" | "nickname" = "message";
@@ -471,6 +482,181 @@ class ChatFlow implements ChatFlowContext {
       senderLabel: "You",
     });
   };
+  
+  private getThreadKeyForNode = (nodeId: string | null): string => {
+    return nodeId ? `dm:${nodeId}` : "channel";
+  };
+
+  recordUserInteraction = (): void => {
+    this.lastUserInteractionAt = Date.now();
+
+    if (["sleep", "thread_view"].includes(this.currentFlowName)) {
+      this.scheduleDormantTimer();
+    }
+  };
+
+  shouldEnterDormant = (): boolean => {
+    return (
+      this.appMode === "meshtastic" &&
+      ["sleep", "thread_view"].includes(this.currentFlowName) &&
+      !this.currentIncomingMessage
+    );
+  };
+
+  markThreadUnread = (nodeId: string | null): void => {
+    this.unreadThreadKeys.add(this.getThreadKeyForNode(nodeId));
+    this.hasUnread = this.unreadThreadKeys.size > 0;
+  };
+
+  markThreadRead = (nodeId: string | null): void => {
+    this.unreadThreadKeys.delete(this.getThreadKeyForNode(nodeId));
+    this.hasUnread = this.unreadThreadKeys.size > 0;
+  };
+
+  markCurrentIncomingThreadRead = (): void => {
+    if (!this.currentIncomingMessage) {
+      return;
+    }
+
+    this.markThreadRead(this.currentIncomingMessage.threadNodeId);
+  };
+
+  private clearDormantTimer = (): void => {
+    if (this.dormantTimer) {
+      clearTimeout(this.dormantTimer);
+      this.dormantTimer = null;
+    }
+  };
+
+  private scheduleDormantTimer = (): void => {
+    this.clearDormantTimer();
+
+    if (!this.shouldEnterDormant()) {
+      return;
+    }
+
+    const timeoutMs = this.settings.dormantTimeoutSeconds * 1000;
+    const elapsedMs = Date.now() - this.lastUserInteractionAt;
+    const remainingMs = Math.max(0, timeoutMs - elapsedMs);
+
+    this.dormantTimer = setTimeout(() => {
+      if (this.shouldEnterDormant()) {
+        this.transitionTo("dormant");
+      }
+    }, remainingMs);
+  };
+
+  private clearIncomingWakeTimer = (): void => {
+    if (this.incomingWakeTimer) {
+      clearTimeout(this.incomingWakeTimer);
+      this.incomingWakeTimer = null;
+    }
+  };
+
+  private scheduleIncomingWakeTimer = (): void => {
+    this.clearIncomingWakeTimer();
+
+    if (!this.autoReturnToDormant) {
+      return;
+    }
+
+    const wakeMs = this.settings.incomingWakeSeconds * 1000;
+    this.incomingWakeDeadlineAt = Date.now() + wakeMs;
+
+    this.incomingWakeTimer = setTimeout(() => {
+      if (
+        this.currentFlowName === "incoming_message" &&
+        this.autoReturnToDormant
+      ) {
+        this.currentIncomingMessage = null;
+        this.transitionTo("dormant");
+      }
+    }, wakeMs);
+  };
+
+  cancelAutoReturnToDormant = (): void => {
+    this.autoReturnToDormant = false;
+    this.incomingWakeDeadlineAt = 0;
+    this.clearIncomingWakeTimer();
+  };
+
+  private configurePostTransition = (
+    previousFlowName: FlowName,
+    nextFlowName: FlowName,
+  ): void => {
+    if (nextFlowName === "incoming_message" && this.autoReturnToDormant) {
+      this.scheduleIncomingWakeTimer();
+    } else {
+      this.clearIncomingWakeTimer();
+
+      if (nextFlowName !== "incoming_message") {
+        this.autoReturnToDormant = false;
+        this.incomingWakeDeadlineAt = 0;
+      }
+    }
+
+    if (["sleep", "thread_view"].includes(nextFlowName)) {
+      this.scheduleDormantTimer();
+    } else {
+      this.clearDormantTimer();
+    }
+  };
+
+  getSettingsMenuText = (): string => {
+    const lines = [
+      `Sound: ${this.settings.soundEnabled ? "On" : "Off"}`,
+      `Dormant timeout: ${this.settings.dormantTimeoutSeconds}s`,
+      `Incoming wake: ${this.settings.incomingWakeSeconds}s`,
+    ];
+
+    return lines
+      .map((line, index) =>
+        `${index === this.currentSettingsMenuIndex ? "›" : " "} ${line}`,
+      )
+      .join("\n");
+  };
+
+  cycleSettingsMenuSelection = (): void => {
+    const menuLength = 3;
+    this.currentSettingsMenuIndex =
+      (this.currentSettingsMenuIndex + 1) % menuLength;
+  };
+
+  adjustSelectedSetting = (): void => {
+    const dormantOptions = [15, 30, 45, 60, 120, 300];
+    const incomingWakeOptions = [3, 5, 6, 8, 10];
+
+    if (this.currentSettingsMenuIndex === 0) {
+      this.settings = settingsStore.updateSettings({
+        soundEnabled: !this.settings.soundEnabled,
+      });
+      return;
+    }
+
+    if (this.currentSettingsMenuIndex === 1) {
+      const currentIndex = dormantOptions.indexOf(
+        this.settings.dormantTimeoutSeconds,
+      );
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % dormantOptions.length : 0;
+      this.settings = settingsStore.updateSettings({
+        dormantTimeoutSeconds: dormantOptions[nextIndex],
+      });
+      this.scheduleDormantTimer();
+      return;
+    }
+
+    if (this.currentSettingsMenuIndex === 2) {
+      const currentIndex = incomingWakeOptions.indexOf(
+        this.settings.incomingWakeSeconds,
+      );
+      const nextIndex =
+        currentIndex >= 0 ? (currentIndex + 1) % incomingWakeOptions.length : 0;
+
+      this.settings = settingsStore.updateSettings({
+        incomingWakeSeconds: incomingWakeOptions[nextIndex],
+      });
+    }
+  };  
 
   private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
@@ -527,13 +713,30 @@ class ChatFlow implements ChatFlowContext {
       routeTag,
       receivedAtDisplay,
       text,
+      threadNodeId: incomingThreadId,
     };
+
+    this.markThreadUnread(incomingThreadId);
+
+    if (this.settings.soundEnabled) {
+      void playIncomingMessageChime();
+    }
+
+    if (this.currentFlowName === "dormant") {
+      this.currentIncomingMessage = displayMessage;
+      this.autoReturnToDormant = true;
+      this.transitionTo("incoming_message");
+      return;
+    }
 
     const isBusy = [
       "listening",
       "asr",
       "review_outgoing",
       "incoming_message",
+      "nickname_prompt",
+      "review_nickname",
+      "settings_menu",
     ].includes(this.currentFlowName);
 
     const isViewingSameThread =
@@ -541,6 +744,7 @@ class ChatFlow implements ChatFlowContext {
       this.currentHomeSelectionId === incomingThreadId;
 
     if (isViewingSameThread) {
+      this.markThreadRead(incomingThreadId);
       this.resetThreadPage();
       this.transitionTo("thread_view");
       return;
@@ -611,9 +815,12 @@ class ChatFlow implements ChatFlowContext {
       body_frame_color: "#444444",
     });
 
+    const previousFlowName = this.currentFlowName;
+
     console.log(`[${getCurrentTimeTag()}] switch to:`, flowName);
     this.stateMachine.transitionTo(flowName);
     display({ text_input_enabled: flowName === "sleep" });
+    this.configurePostTransition(previousFlowName, flowName);
   };
 
   isAnswerFlow = (): boolean => {

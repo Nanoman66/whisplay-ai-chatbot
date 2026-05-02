@@ -145,6 +145,51 @@ export const playWakeupChime = (): Promise<void> => {
   });
 };
 
+export const playIncomingMessageChime = (): Promise<void> => {
+  return new Promise((resolve) => {
+    let finished = false;
+    const done = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      resolve();
+    };
+
+    const chimeProcess = spawn("sox", [
+      "-n",
+      "-t",
+      "alsa",
+      alsaOutputDevice,
+      "synth",
+      "0.08",
+      "sine",
+      "880",
+      "vol",
+      "0.35",
+      ":",
+      "synth",
+      "0.10",
+      "sine",
+      "1175",
+      "vol",
+      "0.28",
+      "fade",
+      "q",
+      "0.01",
+      "0.18",
+      "0.04",
+      "gain",
+      "-20",
+    ]);
+
+    chimeProcess.on("error", done);
+    chimeProcess.on("exit", done);
+
+    setTimeout(done, 1000);
+  });
+};
+
 const recordAudio = async (
   outputPath: string,
   duration: number = 10,

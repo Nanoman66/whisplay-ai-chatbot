@@ -1,8 +1,11 @@
 import { StreamResponser } from "../StreamResponsor";
 import type { MeshtasticService } from "../../meshtastic";
+import type { AppSettings } from "../settingsStore";
 
 export type FlowName =
   | "sleep"
+  | "dormant"
+  | "settings_menu"
   | "camera"
   | "music"
   | "listening"
@@ -24,6 +27,7 @@ export interface IncomingDisplayMessage {
   routeTag: "DM" | "Ch";
   receivedAtDisplay: string;
   text: string;
+  threadNodeId: string | null;
 }
 
 export interface ThreadDisplayMessage {
@@ -71,6 +75,13 @@ export interface ChatFlowContext {
   currentIncomingMessage: IncomingDisplayMessage | null;
   currentThreadPage: number;
 
+  settings: AppSettings;
+  hasUnread: boolean;
+  unreadThreadKeys: Set<string>;
+  lastUserInteractionAt: number;
+  incomingWakeDeadlineAt: number;
+  currentSettingsMenuIndex: number;
+
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
   partialThinkingCallback: (partialThinking: string) => void;
@@ -100,4 +111,15 @@ export interface ChatFlowContext {
   getFormattedNicknameDraft: () => string;
   saveNicknameDraft: () => void;
   clearNicknameDraft: () => void;
+
+  recordUserInteraction: () => void;
+  shouldEnterDormant: () => boolean;
+  markThreadUnread: (nodeId: string | null) => void;
+  markThreadRead: (nodeId: string | null) => void;
+  markCurrentIncomingThreadRead: () => void;
+  cancelAutoReturnToDormant: () => void;
+
+  getSettingsMenuText: () => string;
+  cycleSettingsMenuSelection: () => void;
+  adjustSelectedSetting: () => void;
 }

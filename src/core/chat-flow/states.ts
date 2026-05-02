@@ -88,18 +88,24 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       onButtonDoubleClick(null);
 
       onButtonPressed(() => {
+        ctx.recordUserInteraction();
         resetCameraModeControl();
         stopMusicPlayback();
 
         longPressHandled = false;
 
-        const canStartNicknameHold =
+        const canStartSecretHold =
           tapCount === 1 &&
-          Boolean(tapTimer) &&
-          Boolean(ctx.currentHomeSelectionId);
+          Boolean(tapTimer);
 
-        if (canStartNicknameHold) {
-          renameHoldCandidate = true;
+        const shouldOpenSettings =
+          canStartSecretHold && !ctx.currentHomeSelectionId;
+
+        const shouldOpenNickname =
+          canStartSecretHold && Boolean(ctx.currentHomeSelectionId);
+
+        if (canStartSecretHold) {
+          renameHoldCandidate = shouldOpenNickname;
 
           if (tapTimer) {
             clearTimeout(tapTimer);
@@ -110,9 +116,16 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
             if (!isButtonDown()) {
               return;
             }
+
             longPressHandled = true;
             renameHoldCandidate = false;
             resetTapState();
+
+            if (shouldOpenSettings) {
+              ctx.currentSettingsMenuIndex = 0;
+              ctx.transitionTo("settings_menu");
+              return;
+            }
 
             const nicknameMode = ctx.shouldAllowRenameNickname()
               ? "rename"
@@ -136,6 +149,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
 
       onButtonReleased(() => {
+        ctx.recordUserInteraction();
+
         if (longPressTimer) {
           clearTimeout(longPressTimer);
           longPressTimer = null;
@@ -150,6 +165,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         if (tapCount === 1) {
           tapTimer = setTimeout(() => {
             if (tapCount === 1) {
+              ctx.recordUserInteraction();
               ctx.cycleHomeSelection();
               renderHomeScreen();
             }
@@ -159,6 +175,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         }
 
         if (tapCount === 2) {
+          ctx.recordUserInteraction();
           resetTapState();
 
           if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
@@ -175,6 +192,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
       onTextInput((text: string) => {
         if (ctx.currentFlowName !== "sleep") return;
+        ctx.recordUserInteraction();
         ctx.answerId += 1;
         ctx.asrText = text;
         display({ status: "recognizing", text, text_input_enabled: false });
@@ -236,6 +254,217 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         : {}),
     });
   },
+  
+  dormant: (ctx: ChatFlowContext) => {
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      ctx.recordUserInteraction();
+      ctx.cancelAutoReturnToDormant();
+      ctx.transitionTo("sleep");
+    });
+
+    onButtonReleased(noop);
+    onCameraModeExit(null);
+
+    display({
+      status: "dormant",
+      emoji: "",
+      text: "",
+      header_text: "",
+      header_color: "#AAAAAA",
+      body_text: "",
+      body_color: "#FFFFFF",
+      footer_text: "",
+      footer_color: FOOTER_LEGEND_COLOR,
+      body_frame_visible: false,
+      body_frame_color: "#444444",
+      rag_icon_visible: false,
+      image_icon_visible: false,
+      text_input_enabled: false,
+      brightness: 0,
+      RGB: ctx.hasUnread ? "#ff0000" : "#ffaa00",
+    });
+  },
+
+  settings_menu: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+    let tapCount = 0;
+    let tapTimer: NodeJS.Timeout | null = null;
+
+    const resetTapState = () => {
+      tapCount = 0;
+      if (tapTimer) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
+      }
+    };
+
+    const renderSettingsScreen = () => {
+      const bodyText = ctx.getSettingsMenuText();
+
+      display({
+        status: "settings",
+        emoji: "⚙️",
+        RGB: "#3355aa",
+        header_text: "Settings",
+        header_color: "#00c8a3",
+        body_text: bodyText,
+        body_color: "#FFFFFF",
+        footer_text: buildFooterLegend({
+          single: "next",
+          double: "change",
+          long: "exit",
+        }),
+        footer_color: FOOTER_LEGEND_COLOR,
+        body_frame_visible: true,
+        body_frame_color: "#444444",
+        text: bodyText,
+      });
+    };
+
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      ctx.recordUserInteraction();
+      longPressHandled = false;
+
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
+        }
+
+        longPressHandled = true;
+        resetTapState();
+        ctx.transitionTo("sleep");
+      }, 900);
+    });
+
+    onButtonReleased(() => {
+      ctx.recordUserInteraction();
+
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      tapCount += 1;
+
+      if (tapCount === 1) {
+        tapTimer = setTimeout(() => {
+          if (tapCount === 1) {
+            ctx.cycleSettingsMenuSelection();
+            renderSettingsScreen();
+          }
+          resetTapState();
+        }, 450);
+        return;
+      }
+
+      if (tapCount === 2) {
+        resetTapState();
+        ctx.adjustSelectedSetting();
+        renderSettingsScreen();
+      }
+    });
+
+    renderSettingsScreen();
+  },  
+  
+  settings_menu: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+    let tapCount = 0;
+    let tapTimer: NodeJS.Timeout | null = null;
+
+    const resetTapState = () => {
+      tapCount = 0;
+      if (tapTimer) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
+      }
+    };
+
+    const renderSettingsScreen = () => {
+      const bodyText = ctx.getSettingsMenuText();
+
+      display({
+        status: "settings",
+        emoji: "⚙️",
+        RGB: "#3355aa",
+        header_text: "Settings",
+        header_color: "#00c8a3",
+        body_text: bodyText,
+        body_color: "#FFFFFF",
+        footer_text: buildFooterLegend({
+          single: "next",
+          double: "change",
+          long: "exit",
+        }),
+        footer_color: FOOTER_LEGEND_COLOR,
+        body_frame_visible: true,
+        body_frame_color: "#444444",
+        text: bodyText,
+      });
+    };
+
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      ctx.recordUserInteraction();
+      longPressHandled = false;
+
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
+        }
+
+        longPressHandled = true;
+        resetTapState();
+        ctx.transitionTo("sleep");
+      }, 900);
+    });
+
+    onButtonReleased(() => {
+      ctx.recordUserInteraction();
+
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      tapCount += 1;
+
+      if (tapCount === 1) {
+        tapTimer = setTimeout(() => {
+          if (tapCount === 1) {
+            ctx.cycleSettingsMenuSelection();
+            renderSettingsScreen();
+          }
+          resetTapState();
+        }, 450);
+        return;
+      }
+
+      if (tapCount === 2) {
+        resetTapState();
+        ctx.adjustSelectedSetting();
+        renderSettingsScreen();
+      }
+    });
+
+    renderSettingsScreen();
+  },  
+  
   camera: (ctx: ChatFlowContext) => {
     onButtonDoubleClick(null);
     onButtonPressed(() => {
@@ -905,6 +1134,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
   thread_view: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
+	    ctx.markThreadRead(ctx.currentHomeSelectionId);
+		ctx.recordUserInteraction();
     let longPressHandled = false;
     let tapCount = 0;
     let tapTimer: NodeJS.Timeout | null = null;
@@ -957,6 +1188,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     onButtonPressed(() => {
+	  ctx.recordUserInteraction();
       longPressHandled = false;
         longPressTimer = setTimeout(() => {
           if (!isButtonDown()) {
@@ -970,6 +1202,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonReleased(() => {
+      ctx.recordUserInteraction();
+
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
@@ -1014,6 +1248,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     }
 
     const dismissCurrentMessage = () => {
+      ctx.cancelAutoReturnToDormant();
+      ctx.markCurrentIncomingThreadRead();
+
       ctx.currentIncomingMessage = null;
 
       if (ctx.incomingMessageQueue.length > 0) {
@@ -1027,6 +1264,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
     onButtonPressed(noop);
     onButtonReleased(() => {
+      ctx.recordUserInteraction();
       dismissCurrentMessage();
     });
 
