@@ -48,9 +48,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       let longPressHandled = false;
       let tapCount = 0;
       let tapTimer: NodeJS.Timeout | null = null;
+      let renameHoldCandidate = false;
 
       const resetTapState = () => {
         tapCount = 0;
+        renameHoldCandidate = false;
         if (tapTimer) {
           clearTimeout(tapTimer);
           tapTimer = null;
@@ -90,6 +92,38 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         stopMusicPlayback();
 
         longPressHandled = false;
+
+        const canStartNicknameHold =
+          tapCount === 1 &&
+          Boolean(tapTimer) &&
+          Boolean(ctx.currentHomeSelectionId);
+
+        if (canStartNicknameHold) {
+          renameHoldCandidate = true;
+
+          if (tapTimer) {
+            clearTimeout(tapTimer);
+            tapTimer = null;
+          }
+
+          longPressTimer = setTimeout(() => {
+            if (!isButtonDown()) {
+              return;
+            }
+            longPressHandled = true;
+            renameHoldCandidate = false;
+            resetTapState();
+
+            const nicknameMode = ctx.shouldAllowRenameNickname()
+              ? "rename"
+              : "create";
+
+            ctx.prepareNicknameTargetFromHomeSelection(nicknameMode);
+            ctx.transitionTo("nickname_prompt");
+          }, 700);
+          return;
+        }
+
         longPressTimer = setTimeout(() => {
           if (!isButtonDown()) {
             return;
@@ -128,7 +162,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           resetTapState();
 
           if (ctx.currentHomeSelectionId && ctx.shouldPromptForNickname()) {
-            ctx.prepareNicknameTargetFromHomeSelection();
+            ctx.prepareNicknameTargetFromHomeSelection("create");
             ctx.transitionTo("nickname_prompt");
             return;
           }
@@ -687,13 +721,22 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       continueToThread();
     });
 
+    const isRenameFlow = ctx.isNicknameRenameFlow();
+    const currentSavedNickname = ctx.getCurrentSavedNickname();
+    const promptStatus = isRenameFlow ? "Rename?" : "Nickname?";
+    const promptBody = isRenameFlow
+      ? currentSavedNickname
+        ? `Current nickname: ${currentSavedNickname}\nWould you like to rename this recipient?`
+        : "Would you like to rename this recipient?"
+      : "Would you like to nickname this recipient?";
+
     display({
-      status: "Nickname?",
+      status: promptStatus,
       emoji: "🏷️",
       RGB: "#6633aa",
       header_text: `Recipient: ${ctx.getNicknameTargetLabel()}`,
       header_color: "#00c8a3",
-      body_text: "Would you like to nickname this recipient?",
+      body_text: promptBody,
       body_color: "#FFFFFF",
       footer_text: buildFooterLegend({
         single: "No",
@@ -702,7 +745,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       footer_color: FOOTER_LEGEND_COLOR,
       body_frame_visible: true,
       body_frame_color: "#444444",
-      text: `Recipient: ${ctx.getNicknameTargetLabel()}\nWould you like to nickname this recipient?`,
+      text: `Recipient: ${ctx.getNicknameTargetLabel()}\n${promptBody}`,
     });
   },
 
@@ -723,14 +766,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     const renderReviewNickname = () => {
       const targetLabel = ctx.getNicknameTargetLabel();
+      const isRenameFlow = ctx.isNicknameRenameFlow();
       const formattedNickname =
         ctx.getFormattedNicknameDraft() || ctx.nicknameDraftText;
 
       display({
-        status: "nickname",
+        status: isRenameFlow ? "rename" : "nickname",
         emoji: "🏷️",
         RGB: "#6633aa",
-        header_text: `Nickname for: ${targetLabel}`,
+        header_text: `${isRenameFlow ? "Rename nickname for" : "Nickname for"}: ${targetLabel}`,
         header_color: "#00c8a3",
         body_text: formattedNickname,
         body_color: "#FFFFFF",

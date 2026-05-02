@@ -66,6 +66,7 @@ class ChatFlow implements ChatFlowContext {
   currentOutgoingRecipientId: string | null = null;
   currentNicknameTargetId: string | null = null;
   nicknameDraftText: string = "";
+  nicknameFlowMode: "create" | "rename" = "create";
   recordingPurpose: "message" | "nickname" = "message";
   currentThreadPage: number = 0;
     appMode: "chatbot" | "meshtastic" =
@@ -378,9 +379,34 @@ class ChatFlow implements ChatFlowContext {
     return !nicknameStore.getNickname(this.currentHomeSelectionId);
   };
 
-  prepareNicknameTargetFromHomeSelection = (): void => {
+  shouldAllowRenameNickname = (): boolean => {
+    if (!this.currentHomeSelectionId) {
+      return false;
+    }
+
+    return Boolean(nicknameStore.getNickname(this.currentHomeSelectionId));
+  };
+
+  prepareNicknameTargetFromHomeSelection = (
+    mode: "create" | "rename" = "create",
+  ): void => {
     this.currentNicknameTargetId = this.currentHomeSelectionId;
     this.nicknameDraftText = "";
+    this.recordingPurpose = "message";
+    this.nicknameFlowMode = mode;
+  };
+
+  isNicknameRenameFlow = (): boolean => {
+    return this.nicknameFlowMode === "rename";
+  };
+
+  getCurrentSavedNickname = (): string | null => {
+    const targetId = this.currentNicknameTargetId || this.currentHomeSelectionId;
+    if (!targetId) {
+      return null;
+    }
+
+    return nicknameStore.getNickname(targetId);
   };
 
   getNicknameTargetLabel = (): string => {
@@ -433,6 +459,7 @@ class ChatFlow implements ChatFlowContext {
     this.currentNicknameTargetId = null;
     this.nicknameDraftText = "";
     this.recordingPurpose = "message";
+    this.nicknameFlowMode = "create";
   };
 
   appendOutgoingThreadMessage = (text: string, toNodeId: string | null): void => {

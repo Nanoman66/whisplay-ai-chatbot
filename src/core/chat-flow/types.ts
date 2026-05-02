@@ -65,6 +65,7 @@ export interface ChatFlowContext {
   currentOutgoingRecipientId: string | null;
   currentNicknameTargetId: string | null;
   nicknameDraftText: string;
+  nicknameFlowMode: "create" | "rename";
   recordingPurpose: "message" | "nickname";
   incomingMessageQueue: IncomingDisplayMessage[];
   currentIncomingMessage: IncomingDisplayMessage | null;
@@ -91,7 +92,10 @@ export interface ChatFlowContext {
   getCurrentThreadTitle: () => string;
   appendOutgoingThreadMessage: (text: string, toNodeId: string | null) => void;
   shouldPromptForNickname: () => boolean;
-  prepareNicknameTargetFromHomeSelection: () => void;
+  shouldAllowRenameNickname: () => boolean;
+  prepareNicknameTargetFromHomeSelection: (mode?: "create" | "rename") => void;
+  isNicknameRenameFlow: () => boolean;
+  getCurrentSavedNickname: () => string | null;
   getNicknameTargetLabel: () => string;
   getFormattedNicknameDraft: () => string;
   saveNicknameDraft: () => void;
