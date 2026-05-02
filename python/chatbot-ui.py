@@ -54,6 +54,7 @@ current_footer_text = ""
 current_footer_color = (170, 170, 170, 255)
 current_body_frame_visible = False
 current_body_frame_color = (68, 68, 68, 255)
+current_brightness = 100
 current_battery_level = 100
 current_battery_color = ColorUtils.get_rgb255_from_any("#55FF00")
 current_scroll_top = 0
@@ -80,6 +81,25 @@ camera_thread = None
 clients = {}
 status_icon_factories = []
 
+def apply_brightness(whisplay, brightness):
+    try:
+        brightness = int(brightness)
+    except Exception:
+        brightness = 100
+
+    brightness = max(0, min(100, brightness))
+
+    # Use simple on/off mode at the edge values.
+    # This gives us a reliable dormant-off screen and avoids PWM flicker
+    # for fully-on awake mode on the Pi Zero 2 W Whisplay path.
+    if brightness in (0, 100):
+        whisplay.set_backlight_mode(False)
+        whisplay.set_backlight(brightness)
+        return
+
+    # Only use PWM mode for intermediate values.
+    whisplay.set_backlight_mode(True)
+    whisplay.set_backlight(brightness)
 
 def register_status_icon_factory(factory, priority=100):
     status_icon_factories.append({"priority": priority, "factory": factory})
@@ -108,7 +128,7 @@ class RenderThread(threading.Thread):
             logo_image = Image.open(logo_path).convert("RGBA")
             logo_image = logo_image.resize((whisplay.LCD_WIDTH, whisplay.LCD_HEIGHT), Image.LANCZOS)
             rgb565_data = ImageUtils.image_to_rgb565(logo_image, whisplay.LCD_WIDTH, whisplay.LCD_HEIGHT)
-            whisplay.set_backlight(100)
+            apply_brightness(whisplay, current_brightness)
             whisplay.draw_image(0, 0, whisplay.LCD_WIDTH, whisplay.LCD_HEIGHT, rgb565_data)
 
     def render_frame(self, status, emoji, text, scroll_top, battery_level, battery_color):
@@ -815,13 +835,13 @@ def update_display_data(status=None, emoji=None, text=None,
                   body_frame_visible=None, body_frame_color=None,
                   scroll_speed=None, scroll_sync=None, battery_level=None, battery_color=None, image_path=None,
                   network_connected=None, vpn_connected=None, rag_icon_visible=None, image_icon_visible=None, transaction_id=None,
-                  music_progress=None, music_duration_ms=None):
+                  music_progress=None, music_duration_ms=None, brightness=None):
     global current_top_center_text
     global current_header_text, current_header_color, current_body_text, current_body_color
     global current_thread_messages
     global current_footer_text, current_footer_color
     global current_body_frame_visible, current_body_frame_color
-    global current_status, current_emoji, current_text, current_battery_level
+    global current_status, current_emoji, current_text, current_battery_level, current_brightness
     global current_battery_color, current_scroll_top, current_scroll_speed, current_image_path
     global current_scroll_sync_char_end, current_scroll_sync_duration_ms
     global current_scroll_sync_target_top, current_scroll_sync_speed
@@ -921,6 +941,7 @@ def update_display_data(status=None, emoji=None, text=None,
             
     current_battery_level = battery_level if battery_level is not None else current_battery_level
     current_battery_color = battery_color if battery_color is not None else current_battery_color
+    current_brightness = brightness if brightness is not None else current_brightness
     current_image_path = image_path if image_path is not None else current_image_path
     if music_progress is not None:
         current_music_progress = music_progress if music_progress >= 0 else None
@@ -966,7 +987,7 @@ def on_button_release():
     send_to_all_clients(notification)
 
 def handle_client(client_socket, addr, whisplay):
-    global camera_capture_image_path, camera_mode, camera_thread
+    global camera_capture_image_path, camera_mode, camera_thread, current_brightness
     print(f"[Socket] Client {addr} connected")
     clients[addr] = client_socket
     try:
@@ -1027,8 +1048,9 @@ def handle_client(client_socket, addr, whisplay):
                     else:
                         battery_tuple = None
                         
-                    if brightness:
-                        whisplay.set_backlight(brightness)
+                    if brightness is not None:
+                        current_brightness = brightness
+                        apply_brightness(whisplay, current_brightness)
                         
                     if capture_image_path is not None:
                         camera_capture_image_path = capture_image_path
@@ -1081,7 +1103,8 @@ def handle_client(client_socket, addr, whisplay):
                                          image_icon_visible=image_icon_visible,
                                                  transaction_id=transaction_id,
                                                  music_progress=music_progress,
-                                                 music_duration_ms=music_duration_ms)
+                                                 music_duration_ms=music_duration_ms,
+                                                 brightness=brightness)
 
                     client_socket.send(b"OK\n")
                     if response_to_client:
