@@ -1259,6 +1259,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       return;
     }
 
+    let ignoreInitialRelease = isButtonDown();
+
     const dismissCurrentMessage = () => {
       ctx.dismissCurrentIncomingMessage();
     };
@@ -1266,6 +1268,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
     onButtonPressed(noop);
     onButtonReleased(() => {
+      if (ignoreInitialRelease) {
+        ignoreInitialRelease = false;
+        return;
+      }
+
       ctx.recordUserInteraction();
       dismissCurrentMessage();
     });
