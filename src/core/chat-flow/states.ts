@@ -688,6 +688,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   nickname_prompt: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
     let longPressHandled = false;
+    let ignoreInitialRelease = isButtonDown();
 
     const continueToThread = () => {
       ctx.clearNicknameDraft();
@@ -712,6 +713,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
+      }
+
+      if (ignoreInitialRelease) {
+        ignoreInitialRelease = false;
+        return;
       }
 
       if (longPressHandled) {
