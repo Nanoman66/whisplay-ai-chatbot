@@ -129,6 +129,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
             longPressHandled = true;
             resetTapState();
             ctx.currentSettingsMenuIndex = 0;
+            ctx.armIgnoreNextRelease();
             ctx.transitionTo("settings_menu");
           }, 700);
           return;
@@ -160,6 +161,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
               : "create";
 
             ctx.prepareNicknameTargetFromHomeSelection(nicknameMode);
+            ctx.armIgnoreNextRelease();
             ctx.transitionTo("nickname_prompt");
           }, 700);
           return;
@@ -177,6 +179,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
 
       onButtonReleased(() => {
+        if (ctx.consumeIgnoredRelease()) {
+          return;
+        }
+
         ctx.recordUserInteraction();
 
         if (longPressTimer) {
@@ -405,11 +411,16 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
         longPressHandled = true;
         resetTapState();
+        ctx.armIgnoreNextRelease();
         ctx.transitionTo("sleep");
       }, 900);
     });
 
     onButtonReleased(() => {
+      if (ctx.consumeIgnoredRelease()) {
+        return;
+      }
+
       ctx.recordUserInteraction();
 
       if (longPressTimer) {
@@ -887,6 +898,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       if (isSending) return;
+      if (ctx.consumeIgnoredRelease()) {
+        return;
+      }
+
       ctx.recordUserInteraction();
 
       if (longPressTimer) {
@@ -945,6 +960,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonReleased(() => {
+      if (ctx.consumeIgnoredRelease()) {
+        return;
+      }
+
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
@@ -1037,6 +1056,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     const cancelNickname = () => {
       resetTapState();
       ctx.clearNicknameDraft();
+      ctx.armIgnoreNextRelease();
       ctx.transitionTo("thread_view");
     };
 
@@ -1108,9 +1128,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonReleased(() => {
+      if (ctx.consumeIgnoredRelease()) {
+        return;
+      }
+
       if (isSaving) {
         return;
       }
+
+      ctx.recordUserInteraction();
 
       if (longPressTimer) {
         clearTimeout(longPressTimer);
@@ -1214,6 +1240,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonReleased(() => {
+      if (ctx.consumeIgnoredRelease()) {
+        return;
+      }
+
       ctx.recordUserInteraction();
 
       if (longPressTimer) {
