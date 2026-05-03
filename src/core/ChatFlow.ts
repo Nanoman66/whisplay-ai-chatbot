@@ -78,6 +78,7 @@ class ChatFlow implements ChatFlowContext {
   private autoReturnToDormant = false;
   private flowBeforeDormant: FlowName = "sleep";
   private incomingPreviewReturnFlow: FlowName = "sleep";
+  private ignoreNextButtonRelease = false;
   private bootDormantBlockedUntil: number = Date.now() + 15000;
   nicknameDraftText: string = "";
   nicknameFlowMode: "create" | "rename" = "create";
@@ -603,8 +604,22 @@ class ChatFlow implements ChatFlowContext {
     this.clearIncomingWakeTimer();
   };
   
-    wakeFromDormant = (): void => {
+  armIgnoreNextRelease = (): void => {
+    this.ignoreNextButtonRelease = true;
+  };
+
+  consumeIgnoredRelease = (): boolean => {
+    if (!this.ignoreNextButtonRelease) {
+      return false;
+    }
+
+    this.ignoreNextButtonRelease = false;
+    return true;
+  };
+  
+  wakeFromDormant = (): void => {
     this.recordUserInteraction();
+    this.armIgnoreNextRelease();
 
     if (this.currentIncomingMessage) {
       this.autoReturnToDormant = false;

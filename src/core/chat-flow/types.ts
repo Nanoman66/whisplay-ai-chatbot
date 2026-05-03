@@ -121,6 +121,8 @@ export interface ChatFlowContext {
   cancelAutoReturnToDormant: () => void;
   wakeFromDormant: () => void;
   dismissCurrentIncomingMessage: () => void;
+  armIgnoreNextRelease: () => void;
+  consumeIgnoredRelease: () => boolean;
 
   getSettingsMenuText: () => string;
   cycleSettingsMenuSelection: () => void;
