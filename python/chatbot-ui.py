@@ -1119,6 +1119,8 @@ def handle_client(client_socket, addr, whisplay):
                     trigger_camera_capture = content.get("camera_capture", None)
                     # boolean to enable camera mode
                     set_camera_mode = content.get("camera_mode", None)
+                    
+                    battery_tuple = None
 
                     if rgbled:
                         rgb255_tuple = ColorUtils.get_rgb255_from_any(rgbled)
