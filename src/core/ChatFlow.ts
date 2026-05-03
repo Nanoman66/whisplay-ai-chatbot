@@ -78,7 +78,7 @@ class ChatFlow implements ChatFlowContext {
   private autoReturnToDormant = false;
   private flowBeforeDormant: FlowName = "sleep";
   private incomingPreviewReturnFlow: FlowName = "sleep";
-  private bootDormantBlockedUntil: number = Date.now() + 120000;
+  private bootDormantBlockedUntil: number = Date.now() + 15000;
   nicknameDraftText: string = "";
   nicknameFlowMode: "create" | "rename" = "create";
   recordingPurpose: "message" | "nickname" = "message";
