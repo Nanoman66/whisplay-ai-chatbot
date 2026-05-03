@@ -374,6 +374,7 @@ class ChatFlow implements ChatFlowContext {
 
     return messages
       .slice(startInclusive, Math.max(startInclusive, endExclusive))
+      .reverse()
       .map((entry) => ({
         headerText: entry.headerText,
         headerColor: entry.headerColor,
