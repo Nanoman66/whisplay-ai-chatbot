@@ -175,6 +175,13 @@ class WhisplayBoard:
         self._current_r = 0
         self._current_g = 0
         self._current_b = 0
+        self._led_mode = "steady"
+        self._led_target_r = 0
+        self._led_target_g = 0
+        self._led_target_b = 0
+        self._led_thread = None
+        self._led_thread_running = False
+        self._led_lock = threading.Lock()
         self.button_press_callback = None
         self.button_release_callback = None
 
@@ -632,32 +639,94 @@ class WhisplayBoard:
         self._send_data(pixel_data)
 
     # ========== RGB LED & Button ==========
+    # ========== RGB LED & Button ==========
+    def _apply_rgb(self, r, g, b):
+        r = max(0, min(255, int(r)))
+        g = max(0, min(255, int(g)))
+        b = max(0, min(255, int(b)))
+
+        with self._led_lock:
+            self.red_pwm.ChangeDutyCycle(100 - (r / 255 * 100))
+            self.green_pwm.ChangeDutyCycle(100 - (g / 255 * 100))
+            self.blue_pwm.ChangeDutyCycle(100 - (b / 255 * 100))
+            self._current_r = r
+            self._current_g = g
+            self._current_b = b
+
+    def _stop_led_animation(self):
+        self._led_thread_running = False
+
+        if (
+            self._led_thread is not None
+            and self._led_thread.is_alive()
+            and threading.current_thread() is not self._led_thread
+        ):
+            self._led_thread.join(timeout=1)
+
+        self._led_thread = None
+        self._led_mode = "steady"
+
+    def _rgb_breathe_loop(self, cycle_ms=2200, min_scale=0.12):
+        import math
+
+        period_s = max(0.4, cycle_ms / 1000.0)
+        frame_delay_s = 0.04
+
+        while self._led_thread_running:
+          phase = (time.time() % period_s) / period_s
+          wave = (1.0 - math.cos(2.0 * math.pi * phase)) / 2.0
+          scale = min_scale + ((1.0 - min_scale) * wave)
+
+          self._apply_rgb(
+              int(self._led_target_r * scale),
+              int(self._led_target_g * scale),
+              int(self._led_target_b * scale),
+          )
+          time.sleep(frame_delay_s)
+
     def set_rgb(self, r, g, b):
-        self.red_pwm.ChangeDutyCycle(100 - (r / 255 * 100))
-        self.green_pwm.ChangeDutyCycle(100 - (g / 255 * 100))
-        self.blue_pwm.ChangeDutyCycle(100 - (b / 255 * 100))
-        self._current_r = r
-        self._current_g = g
-        self._current_b = b
+        self._stop_led_animation()
+        self._apply_rgb(r, g, b)
 
     def set_rgb_fade(self, r_target, g_target, b_target, duration_ms=100):
-        steps = 20  # Adjust steps to control fade smoothness
+        self._stop_led_animation()
+
+        start_r = self._current_r
+        start_g = self._current_g
+        start_b = self._current_b
+
+        steps = 20
         delay_ms = duration_ms / steps
 
-        r_step = (r_target - self._current_r) / steps
-        g_step = (g_target - self._current_g) / steps
-        b_step = (b_target - self._current_b) / steps
+        r_step = (r_target - start_r) / steps
+        g_step = (g_target - start_g) / steps
+        b_step = (b_target - start_b) / steps
 
-        for _ in range(steps + 1):
-            r_interim = int(self._current_r + _ * r_step)
-            g_interim = int(self._current_g + _ * g_step)
-            b_interim = int(self._current_b + _ * b_step)
-            self.set_rgb(
+        for step in range(steps + 1):
+            r_interim = int(start_r + step * r_step)
+            g_interim = int(start_g + step * g_step)
+            b_interim = int(start_b + step * b_step)
+            self._apply_rgb(
                 max(0, min(255, r_interim)),
                 max(0, min(255, g_interim)),
                 max(0, min(255, b_interim)),
             )
             time.sleep(delay_ms / 1000.0)
+
+    def set_rgb_breathe(self, r_target, g_target, b_target, cycle_ms=2200, min_scale=0.12):
+        self._stop_led_animation()
+
+        self._led_target_r = max(0, min(255, int(r_target)))
+        self._led_target_g = max(0, min(255, int(g_target)))
+        self._led_target_b = max(0, min(255, int(b_target)))
+        self._led_mode = "breathe"
+        self._led_thread_running = True
+        self._led_thread = threading.Thread(
+            target=self._rgb_breathe_loop,
+            args=(cycle_ms, min_scale),
+            daemon=True,
+        )
+        self._led_thread.start()
 
     def button_pressed(self):
         return self._gpio_input(self.BUTTON_PIN) == 1
@@ -688,6 +757,8 @@ class WhisplayBoard:
 
     # ========== Cleanup ==========
     def cleanup(self):
+        self._stop_led_animation()
+
         # Stop backlight PWM
         if self.backlight_pwm is not None:
             self.backlight_pwm.stop()

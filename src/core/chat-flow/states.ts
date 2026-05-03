@@ -47,6 +47,7 @@ import {
   onMusicPlaybackEnd,
 } from "../../device/music-player";
 import { buildFooterLegend, FOOTER_LEGEND_COLOR } from "./footerLegend";
+import { deviceBehaviorDefaults } from "../../config/deviceBehaviorDefaults";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
@@ -356,7 +357,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       image_icon_visible: false,
       text_input_enabled: false,
       brightness: 0,
-      RGB: ctx.hasUnread ? "#ff0000" : "#ffaa00",
+      RGB: ctx.hasUnread
+        ? deviceBehaviorDefaults.led.dormantUnreadHex
+        : deviceBehaviorDefaults.led.dormantIdleHex,
     });
   },
 

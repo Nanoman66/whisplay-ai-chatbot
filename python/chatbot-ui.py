@@ -81,6 +81,87 @@ camera_thread = None
 clients = {}
 status_icon_factories = []
 
+DEVICE_BEHAVIOR_DEFAULTS_PATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "src",
+        "config",
+        "device-behavior.defaults.json",
+    )
+)
+
+FALLBACK_DEVICE_BEHAVIOR_DEFAULTS = {
+    "led": {
+        "dormantIdleHex": "#ffaa00",
+        "dormantUnreadHex": "#ff0000",
+        "modeWhenDormant": "breathe",
+        "breatheCycleMs": 2200,
+        "breatheMinScale": 0.12,
+        "awakeFadeMs": 350,
+    },
+    "sounds": {
+        "incomingMessageSoundFile": "",
+        "wakeupSoundFile": "",
+    },
+}
+
+def load_device_behavior_defaults():
+    try:
+        if not os.path.exists(DEVICE_BEHAVIOR_DEFAULTS_PATH):
+            return FALLBACK_DEVICE_BEHAVIOR_DEFAULTS
+
+        with open(DEVICE_BEHAVIOR_DEFAULTS_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+
+        led = raw.get("led", {})
+        sounds = raw.get("sounds", {})
+
+        return {
+            "led": {
+                "dormantIdleHex": led.get(
+                    "dormantIdleHex",
+                    FALLBACK_DEVICE_BEHAVIOR_DEFAULTS["led"]["dormantIdleHex"],
+                ),
+                "dormantUnreadHex": led.get(
+                    "dormantUnreadHex",
+                    FALLBACK_DEVICE_BEHAVIOR_DEFAULTS["led"]["dormantUnreadHex"],
+                ),
+                "modeWhenDormant": led.get(
+                    "modeWhenDormant",
+                    FALLBACK_DEVICE_BEHAVIOR_DEFAULTS["led"]["modeWhenDormant"],
+                ),
+                "breatheCycleMs": int(
+                    led.get(
+                        "breatheCycleMs",
+                        FALLBACK_DEVICE_BEHAVIOR_DEFAULTS["led"]["breatheCycleMs"],
+                    )
+                ),
+                "breatheMinScale": float(
+                    led.get(
+                        "breatheMinScale",
+                        FALLBACK_DEVICE_BEHAVIOR_DEFAULTS["led"]["breatheMinScale"],
+                    )
+                ),
+                "awakeFadeMs": int(
+                    led.get(
+                        "awakeFadeMs",
+                        FALLBACK_DEVICE_BEHAVIOR_DEFAULTS["led"]["awakeFadeMs"],
+                    )
+                ),
+            },
+            "sounds": {
+                "incomingMessageSoundFile": sounds.get("incomingMessageSoundFile", ""),
+                "wakeupSoundFile": sounds.get("wakeupSoundFile", ""),
+            },
+        }
+    except Exception as e:
+        print(f"[Config] Failed to load device behavior defaults: {e}")
+        return FALLBACK_DEVICE_BEHAVIOR_DEFAULTS
+
+DEVICE_BEHAVIOR_DEFAULTS = load_device_behavior_defaults()
+LED_BEHAVIOR_DEFAULTS = DEVICE_BEHAVIOR_DEFAULTS["led"]
+
 def apply_brightness(whisplay, brightness):
     try:
         brightness = int(brightness)
@@ -1041,12 +1122,20 @@ def handle_client(client_socket, addr, whisplay):
 
                     if rgbled:
                         rgb255_tuple = ColorUtils.get_rgb255_from_any(rgbled)
-                        whisplay.set_rgb_fade(*rgb255_tuple, duration_ms=500)
-                    
-                    if battery_color:
-                        battery_tuple = ColorUtils.get_rgb255_from_any(battery_color)
-                    else:
-                        battery_tuple = None
+                        if rgb255_tuple is not None:
+                            dormant_mode = LED_BEHAVIOR_DEFAULTS.get("modeWhenDormant", "breathe")
+                            awake_fade_ms = int(LED_BEHAVIOR_DEFAULTS.get("awakeFadeMs", 350))
+                            breathe_cycle_ms = int(LED_BEHAVIOR_DEFAULTS.get("breatheCycleMs", 2200))
+                            breathe_min_scale = float(LED_BEHAVIOR_DEFAULTS.get("breatheMinScale", 0.12))
+
+                            if status == "dormant" and dormant_mode == "breathe":
+                                whisplay.set_rgb_breathe(
+                                    *rgb255_tuple,
+                                    cycle_ms=breathe_cycle_ms,
+                                    min_scale=breathe_min_scale,
+                                )
+                            else:
+                                whisplay.set_rgb_fade(*rgb255_tuple, duration_ms=awake_fade_ms)
                         
                     if brightness is not None:
                         current_brightness = brightness

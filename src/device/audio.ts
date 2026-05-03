@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { spawn, ChildProcess } from "child_process";
 import { isEmpty, noop, set } from "lodash";
 import dotenv from "dotenv";
@@ -6,6 +8,7 @@ import { pluginRegistry } from "../plugin";
 import type { ASRPlugin, TTSPlugin, AudioFormat } from "../plugin";
 import { ASRServer, TTSResult, TTSServer } from "../type";
 import { webAudioBridge } from "./web-audio-bridge";
+import { deviceBehaviorDefaults } from "../config/deviceBehaviorDefaults";
 
 export { getDynamicVoiceDetectLevel } from "./voice-detect";
 
@@ -77,6 +80,44 @@ function startPlayerProcess() {
 let recordingProcessList: ChildProcess[] = [];
 let currentRecordingReject: (reason?: any) => void = noop;
 
+const resolveConfiguredSoundPath = (value: string): string => {
+  if (!value) {
+    return "";
+  }
+
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
+};
+
+const tryPlayConfiguredSoundFile = (
+  configuredPath: string,
+  timeoutMs: number,
+): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const filePath = resolveConfiguredSoundPath(configuredPath);
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      resolve(false);
+      return;
+    }
+
+    let finished = false;
+    const done = (played: boolean) => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      resolve(played);
+    };
+
+    const soundProcess = spawn("sox", [filePath, "-t", "alsa", alsaOutputDevice]);
+
+    soundProcess.on("error", () => done(false));
+    soundProcess.on("exit", (code) => done(code === 0));
+
+    setTimeout(() => done(true), timeoutMs);
+  });
+};
+
 const killAllRecordingProcesses = (): void => {
   recordingProcessList.forEach((child) => {
     console.log("Killing recording process", child.pid);
@@ -87,7 +128,16 @@ const killAllRecordingProcesses = (): void => {
   recordingProcessList.length = 0;
 };
 
-export const playWakeupChime = (): Promise<void> => {
+export const playWakeupChime = async (): Promise<void> => {
+  const playedConfiguredSound = await tryPlayConfiguredSoundFile(
+    deviceBehaviorDefaults.sounds.wakeupSoundFile,
+    1500,
+  );
+
+  if (playedConfiguredSound) {
+    return;
+  }
+
   return new Promise((resolve) => {
     let finished = false;
     const done = () => {
@@ -97,12 +147,6 @@ export const playWakeupChime = (): Promise<void> => {
       finished = true;
       resolve();
     };
-
-    //     play -n \
-    // synth 0.10 sine 720 vol 0.4 : \
-    // synth 0.12 sine 980 vol 0.35 : \
-    // synth 0.14 sine 1320 vol 0.3 \
-    // fade q 0.02 0.30 0.08 gain -30
 
     const chimeProcess = spawn("sox", [
       "-n",
@@ -145,7 +189,16 @@ export const playWakeupChime = (): Promise<void> => {
   });
 };
 
-export const playIncomingMessageChime = (): Promise<void> => {
+export const playIncomingMessageChime = async (): Promise<void> => {
+  const playedConfiguredSound = await tryPlayConfiguredSoundFile(
+    deviceBehaviorDefaults.sounds.incomingMessageSoundFile,
+    1000,
+  );
+
+  if (playedConfiguredSound) {
+    return;
+  }
+
   return new Promise((resolve) => {
     let finished = false;
     const done = () => {

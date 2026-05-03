@@ -1,0 +1,14 @@
+{
+  "led": {
+    "dormantIdleHex": "#ffaa00",
+    "dormantUnreadHex": "#ff0000",
+    "modeWhenDormant": "breathe",
+    "breatheCycleMs": 2200,
+    "breatheMinScale": 0.12,
+    "awakeFadeMs": 350
+  },
+  "sounds": {
+    "incomingMessageSoundFile": "",
+    "wakeupSoundFile": ""
+  }
+}
