@@ -814,8 +814,11 @@ class ChatFlow implements ChatFlowContext {
 
     if (this.currentSettingsMenuIndex === 4) {
       this.requestSystemReboot();
+      return;
     }
+  };
 
+  private formatIncomingTimestamp = (date: Date): string => {
   private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
       hour: "numeric",
