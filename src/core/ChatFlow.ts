@@ -24,7 +24,7 @@ import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
 import { settingsStore, AWAKE_BRIGHTNESS_OPTIONS } from "./settingsStore";
 import type { AppSettings } from "./settingsStore";
-
+import { spawn } from "child_process";
 
 dotEnv.config();
 
@@ -717,6 +717,7 @@ class ChatFlow implements ChatFlowContext {
       `Brightness: ${this.settings.awakeBrightness}%`,
       `Dormant timeout: ${this.settings.dormantTimeoutSeconds}s`,
       `Incoming wake: ${this.settings.incomingWakeSeconds}s`,
+      `Reboot device`,
     ];
 
     return lines
@@ -727,9 +728,37 @@ class ChatFlow implements ChatFlowContext {
   };
 
   cycleSettingsMenuSelection = (): void => {
-    const menuLength = 4;
+    const menuLength = 5;
     this.currentSettingsMenuIndex =
       (this.currentSettingsMenuIndex + 1) % menuLength;
+  };
+  
+    requestSystemReboot = (): void => {
+    display({
+      status: "rebooting",
+      emoji: "♻️",
+      RGB: "#ff6800",
+      brightness: this.getAwakeBrightness(),
+      text: "Rebooting device...",
+      footer_text: "",
+      footer_color: "#ff5555",
+    });
+
+    setTimeout(() => {
+      try {
+        const child = spawn(
+          "sudo",
+          ["/usr/local/bin/aimeshypi-reboot"],
+          {
+            detached: true,
+            stdio: "ignore",
+          },
+        );
+        child.unref();
+      } catch (error) {
+        console.error("[Settings] failed to request reboot:", error);
+      }
+    }, 800);
   };
 
   adjustSelectedSetting = (): void => {
@@ -780,8 +809,12 @@ class ChatFlow implements ChatFlowContext {
       this.settings = settingsStore.updateSettings({
         incomingWakeSeconds: incomingWakeOptions[nextIndex],
       });
+      return;
     }
-  };
+
+    if (this.currentSettingsMenuIndex === 4) {
+      this.requestSystemReboot();
+    }
 
   private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
