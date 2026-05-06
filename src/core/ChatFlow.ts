@@ -813,7 +813,7 @@ class ChatFlow implements ChatFlowContext {
     }
 
     if (this.currentSettingsMenuIndex === 4) {
-      this.requestSystemReboot();
+      this.transitionTo("confirm_reboot");
       return;
     }
   };

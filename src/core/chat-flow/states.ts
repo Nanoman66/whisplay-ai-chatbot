@@ -450,12 +450,109 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
       if (tapCount === 2) {
         resetTapState();
+
+        if (ctx.currentSettingsMenuIndex === 4) {
+          ctx.transitionTo("confirm_reboot");
+          return;
+        }
+
         ctx.adjustSelectedSetting();
         renderSettingsScreen();
       }
     });
 
     renderSettingsScreen();
+  },
+
+  confirm_reboot: (ctx: ChatFlowContext) => {
+    let tapCount = 0;
+    let tapTimer: NodeJS.Timeout | null = null;
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+
+    const resetTapState = () => {
+      tapCount = 0;
+      if (tapTimer) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
+      }
+    };
+
+    const renderConfirmScreen = () => {
+      display({
+        status: "confirm",
+        emoji: "♻️",
+        RGB: "#ff6800",
+        brightness: ctx.getAwakeBrightness(),
+        header_text: "Confirm reboot?",
+        header_color: "#ff5555",
+        body_text: "This will restart AIMeshyPi.",
+        body_color: "#FFFFFF",
+        footer_text: buildFooterLegend({
+          single: "cancel",
+          double: "reboot",
+          long: "home",
+        }),
+        footer_color: FOOTER_LEGEND_COLOR,
+        body_frame_visible: true,
+        body_frame_color: "#444444",
+        text: "Confirm reboot?\nThis will restart AIMeshyPi.",
+      });
+    };
+
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      ctx.recordUserInteraction();
+      longPressHandled = false;
+
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
+        }
+
+        longPressHandled = true;
+        resetTapState();
+        ctx.armIgnoreNextRelease();
+        ctx.transitionTo("sleep");
+      }, 900);
+    });
+
+    onButtonReleased(() => {
+      if (ctx.consumeIgnoredRelease()) {
+        return;
+      }
+
+      ctx.recordUserInteraction();
+
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      tapCount += 1;
+
+      if (tapCount === 1) {
+        tapTimer = setTimeout(() => {
+          if (tapCount === 1) {
+            ctx.transitionTo("settings_menu");
+          }
+          resetTapState();
+        }, 450);
+        return;
+      }
+
+      if (tapCount === 2) {
+        resetTapState();
+        ctx.requestSystemReboot();
+      }
+    });
+
+    renderConfirmScreen();
   },
 
   camera: (ctx: ChatFlowContext) => {

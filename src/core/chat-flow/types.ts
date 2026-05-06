@@ -6,6 +6,7 @@ export type FlowName =
   | "sleep"
   | "dormant"
   | "settings_menu"
+  | "confirm_reboot"
   | "camera"
   | "music"
   | "listening"
@@ -127,4 +128,5 @@ export interface ChatFlowContext {
   getSettingsMenuText: () => string;
   cycleSettingsMenuSelection: () => void;
   adjustSelectedSetting: () => void;
+  requestSystemReboot: () => void;
 }
