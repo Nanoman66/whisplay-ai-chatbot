@@ -819,7 +819,6 @@ class ChatFlow implements ChatFlowContext {
   };
 
   private formatIncomingTimestamp = (date: Date): string => {
-  private formatIncomingTimestamp = (date: Date): string => {
     const timeText = date.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
