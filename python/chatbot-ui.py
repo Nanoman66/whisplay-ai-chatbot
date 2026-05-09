@@ -24,6 +24,7 @@ from wireguard_icon import WireguardStatusIcon
 
 scroll_thread = None
 scroll_stop_event = threading.Event()
+render_wake_event = threading.Event()
 
 status_font_size=14
 emoji_font_size=40
@@ -203,8 +204,9 @@ class RenderThread(threading.Thread):
         self.current_thread_signature = ""
         self.last_frame_signature = None
         self.active_frame_interval = 1 / max(1, self.fps)
-        self.idle_frame_interval = 0.50
+        self.idle_frame_interval = 2.00
         self.medium_frame_interval = 0.20
+        render_wake_event.set()
 
     def render_init_screen(self):
         # Display logo on startup
@@ -975,11 +977,16 @@ class RenderThread(threading.Thread):
 
     def run(self):
         while self.running:
+            timeout = self.get_frame_interval()
+            render_wake_event.wait(timeout)
+            render_wake_event.clear()
+            if not self.running:
+                break
             self.render_frame(current_status, current_emoji, current_text, current_scroll_top, current_battery_level, current_battery_color)
-            time.sleep(self.get_frame_interval())
-            
+
     def stop(self):
         self.running = False
+        render_wake_event.set()
 
 def update_display_data(status=None, emoji=None, text=None,
                   top_center_text=None,
@@ -1001,6 +1008,7 @@ def update_display_data(status=None, emoji=None, text=None,
     global current_scroll_sync_hold_until
     global current_network_connected, current_vpn_connected, current_rag_icon_visible, current_image_icon_visible, current_transaction_id
     global current_music_progress, current_music_duration_ms
+    global render_wake_event
 
     next_text = text
     if text is not None:
