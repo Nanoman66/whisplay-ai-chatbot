@@ -201,6 +201,7 @@ class RenderThread(threading.Thread):
         self.text_cache_image = None
         self.thread_cache_image = None
         self.current_thread_signature = ""
+        self.last_frame_signature = None
 
     def render_init_screen(self):
         # Display logo on startup
@@ -214,8 +215,52 @@ class RenderThread(threading.Thread):
 
     def render_frame(self, status, emoji, text, scroll_top, battery_level, battery_color):
         global current_scroll_speed, current_image_path, current_image, camera_mode, current_thread_messages
+        global current_top_center_text, current_header_text, current_header_color
+        global current_body_text, current_body_color, current_footer_text, current_footer_color
+        global current_body_frame_visible, current_body_frame_color
+        global current_network_connected, current_vpn_connected
+        global current_rag_icon_visible, current_image_icon_visible
+        global current_music_progress, current_music_duration_ms
+
         if camera_mode:
+            self.last_frame_signature = None
             return  # Skip rendering if in camera mode
+
+        frame_signature = json.dumps(
+            {
+                "status": status,
+                "emoji": emoji,
+                "text": text,
+                "scroll_top": scroll_top,
+                "battery_level": battery_level,
+                "battery_color": battery_color,
+                "top_center_text": current_top_center_text,
+                "header_text": current_header_text,
+                "header_color": current_header_color,
+                "body_text": current_body_text,
+                "body_color": current_body_color,
+                "thread_messages": current_thread_messages,
+                "footer_text": current_footer_text,
+                "footer_color": current_footer_color,
+                "body_frame_visible": current_body_frame_visible,
+                "body_frame_color": current_body_frame_color,
+                "image_path": current_image_path,
+                "network_connected": current_network_connected,
+                "vpn_connected": current_vpn_connected,
+                "rag_icon_visible": current_rag_icon_visible,
+                "image_icon_visible": current_image_icon_visible,
+                "music_progress": current_music_progress,
+                "music_duration_ms": current_music_duration_ms,
+            },
+            sort_keys=True,
+            default=str,
+        )
+
+        if self.last_frame_signature == frame_signature:
+            return
+
+        self.last_frame_signature = frame_signature
+
         if current_image_path not in [None, ""]:
             # Try to load image from path
             if current_image is not None:
@@ -671,10 +716,9 @@ class RenderThread(threading.Thread):
 
             return
 
-        self.thread_cache_image = None
-        self.current_thread_signature = ""
-        self.current_render_text = ""
-        self.text_cache_image = None
+        if self.thread_cache_image is not None or self.current_thread_signature:
+            self.thread_cache_image = None
+            self.current_thread_signature = ""
 
         lines = []
         for paragraph in (body_text or "").split("\n"):
