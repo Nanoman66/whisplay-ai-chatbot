@@ -202,6 +202,9 @@ class RenderThread(threading.Thread):
         self.thread_cache_image = None
         self.current_thread_signature = ""
         self.last_frame_signature = None
+        self.active_frame_interval = 1 / max(1, self.fps)
+        self.idle_frame_interval = 0.50
+        self.medium_frame_interval = 0.20
 
     def render_init_screen(self):
         # Display logo on startup
@@ -949,11 +952,31 @@ class RenderThread(threading.Thread):
             icon.render(draw, icon_x, icon_y)
             cursor_x = icon_x - icon_gap
 
+    def get_frame_interval(self):
+        global camera_mode
+        global current_music_progress
+        global current_scroll_sync_speed, current_scroll_sync_target_top
+        global current_status
+
+        if camera_mode:
+            return self.active_frame_interval
+
+        if current_music_progress is not None:
+            return self.medium_frame_interval
+
+        if current_scroll_sync_speed is not None or current_scroll_sync_target_top is not None:
+            return self.active_frame_interval
+
+        animated_statuses = {"answering", "thinking", "recording", "transcribing"}
+        if str(current_status).lower() in animated_statuses:
+            return self.medium_frame_interval
+
+        return self.idle_frame_interval
+
     def run(self):
-        frame_interval = 1 / self.fps
         while self.running:
             self.render_frame(current_status, current_emoji, current_text, current_scroll_top, current_battery_level, current_battery_color)
-            time.sleep(frame_interval)
+            time.sleep(self.get_frame_interval())
             
     def stop(self):
         self.running = False
