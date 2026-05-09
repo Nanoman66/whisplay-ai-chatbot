@@ -385,9 +385,12 @@ const player: Player = {
   process: null,
 };
 
-setTimeout(() => {
-  player.process = startPlayerProcess();
-}, 5000);
+const ensurePlayerProcess = (): ChildProcess | null => {
+  if (!player.process) {
+    player.process = startPlayerProcess();
+  }
+  return player.process;
+};
 
 const playAudioData = (params: TTSResult): Promise<void> => {
   // Delegate to browser speaker when web audio is enabled and a client is connected.
@@ -468,9 +471,9 @@ const playAudioData = (params: TTSResult): Promise<void> => {
       return;
     }
 
-    const process = player.process;
+    const process = ensurePlayerProcess();
     if (!process) {
-      return reject(new Error("Audio player is not initialized."));
+      return reject(new Error("Audio player is not available."));
     }
 
     try {
@@ -505,10 +508,7 @@ const stopPlaying = (): void => {
       }
     } catch { }
     player.isPlaying = false;
-    // Recreate process
-    setTimeout(() => {
-      player.process = startPlayerProcess();
-    }, 500);
+    player.process = null;
   } else {
     console.log("No audio currently playing");
   }

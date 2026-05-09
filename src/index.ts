@@ -8,6 +8,9 @@ import { exec } from "child_process";
 
 dotenv.config();
 
+const appMode = (process.env.APP_MODE || "chatbot").toLowerCase();
+const isMeshtasticMode = appMode === "meshtastic";
+
 const battery = new Battery();
 battery.connect().catch((e) => {
   console.log("Failed to reconnect to battery service.");
@@ -46,7 +49,14 @@ const intervalCheckNetwork = () => {
     });
   }, 10000);
 };
-intervalCheckNetwork();
+
+if (isMeshtasticMode) {
+  display({
+    network_connected: false,
+  });
+} else {
+  intervalCheckNetwork();
+}
 
 type VpnProvider = "none" | "wireguard" | "tailscale";
 
@@ -104,7 +114,9 @@ const intervalCheckTailscale = () => {
   }, 10000);
 };
 
-if (vpnProvider === "wireguard") {
+if (isMeshtasticMode) {
+  display({ vpn_connected: false });
+} else if (vpnProvider === "wireguard") {
   intervalCheckWireguard();
 } else if (vpnProvider === "tailscale") {
   intervalCheckTailscale();
