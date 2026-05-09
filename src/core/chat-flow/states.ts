@@ -451,13 +451,16 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       if (tapCount === 2) {
         resetTapState();
 
-        if (ctx.currentSettingsMenuIndex === 4) {
+        if (ctx.currentSettingsMenuIndex === 5) {
           ctx.transitionTo("confirm_reboot");
           return;
         }
 
         ctx.adjustSelectedSetting();
-        renderSettingsScreen();
+
+        if (ctx.currentSettingsMenuIndex !== 4) {
+          renderSettingsScreen();
+        }
       }
     });
 

@@ -24,7 +24,7 @@ import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
 import { settingsStore, AWAKE_BRIGHTNESS_OPTIONS } from "./settingsStore";
 import type { AppSettings } from "./settingsStore";
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 
 dotEnv.config();
 
@@ -717,6 +717,7 @@ class ChatFlow implements ChatFlowContext {
       `Brightness: ${this.settings.awakeBrightness}%`,
       `Dormant timeout: ${this.settings.dormantTimeoutSeconds}s`,
       `Incoming wake: ${this.settings.incomingWakeSeconds}s`,
+      this.getWifiPowerLabel(),
       `Reboot device`,
     ];
 
@@ -728,9 +729,64 @@ class ChatFlow implements ChatFlowContext {
   };
 
   cycleSettingsMenuSelection = (): void => {
-    const menuLength = 5;
+    const menuLength = 6;
     this.currentSettingsMenuIndex =
       (this.currentSettingsMenuIndex + 1) % menuLength;
+  };
+
+  getWifiPowerLabel = (): string => {
+    try {
+      const result = spawnSync("nmcli", ["radio", "wifi"], {
+        encoding: "utf-8",
+        timeout: 1000,
+      });
+
+      const state = (result.stdout || "").trim().toLowerCase();
+
+      if (state === "disabled") {
+        return "Wi-Fi: Off (turn on)";
+      }
+
+      if (state === "enabled") {
+        return "Wi-Fi sleep: 30m";
+      }
+    } catch (error) {
+      console.error("[Settings] failed to read Wi-Fi state:", error);
+    }
+
+    return "Wi-Fi sleep: 30m";
+  };
+
+  requestWifiToggle = (): void => {
+    const isWifiCurrentlyOff = this.getWifiPowerLabel().includes("Off");
+
+    display({
+      status: "wifi",
+      emoji: "📶",
+      RGB: "#3355aa",
+      brightness: this.getAwakeBrightness(),
+      text: isWifiCurrentlyOff
+        ? "Turning Wi-Fi on..."
+        : "Wi-Fi sleeping for 30 minutes...",
+      footer_text: "",
+      footer_color: "#ff5555",
+    });
+
+    setTimeout(() => {
+      try {
+        const child = spawn(
+          "sudo",
+          ["/usr/local/bin/aimeshypi-wifi-toggle"],
+          {
+            detached: true,
+            stdio: "ignore",
+          },
+        );
+        child.unref();
+      } catch (error) {
+        console.error("[Settings] failed to toggle Wi-Fi:", error);
+      }
+    }, 800);
   };
   
     requestSystemReboot = (): void => {
@@ -813,6 +869,11 @@ class ChatFlow implements ChatFlowContext {
     }
 
     if (this.currentSettingsMenuIndex === 4) {
+      this.requestWifiToggle();
+      return;
+    }
+
+    if (this.currentSettingsMenuIndex === 5) {
       this.transitionTo("confirm_reboot");
       return;
     }
