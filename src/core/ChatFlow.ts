@@ -744,17 +744,17 @@ class ChatFlow implements ChatFlowContext {
       const state = (result.stdout || "").trim().toLowerCase();
 
       if (state === "disabled") {
-        return "Wi-Fi: Off (turn on)";
+        return "Wi-Fi: Off";
       }
 
       if (state === "enabled") {
-        return "Wi-Fi sleep: 30m";
+        return "Wi-Fi: On";
       }
     } catch (error) {
       console.error("[Settings] failed to read Wi-Fi state:", error);
     }
 
-    return "Wi-Fi sleep: 30m";
+    return "Wi-Fi: Unknown";
   };
 
   requestWifiToggle = (): void => {
@@ -767,7 +767,7 @@ class ChatFlow implements ChatFlowContext {
       brightness: this.getAwakeBrightness(),
       text: isWifiCurrentlyOff
         ? "Turning Wi-Fi on..."
-        : "Wi-Fi sleeping for 30 minutes...",
+        : "Turning Wi-Fi off...",
       footer_text: "",
       footer_color: "#ff5555",
     });
