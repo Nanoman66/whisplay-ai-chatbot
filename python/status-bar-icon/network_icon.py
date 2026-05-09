@@ -1,6 +1,6 @@
 import os
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from icon_constants import STATUS_ICON_HEIGHT, NETWORK_ICON_CENTER_SCALE
 
 
@@ -8,13 +8,29 @@ class NetworkStatusIcon:
     _scaled_icon_cache = {}
     _source_icon = None
 
-    def __init__(self, status_font_size, icon_center_scale=NETWORK_ICON_CENTER_SCALE):
+    def __init__(
+        self,
+        status_font_size,
+        icon_center_scale=NETWORK_ICON_CENTER_SCALE,
+        connected=True,
+    ):
         self.status_font_size = status_font_size
         self.icon_height = STATUS_ICON_HEIGHT
-        self.icon_center_scale = icon_center_scale if icon_center_scale and icon_center_scale > 0 else 1.0
+        self.icon_center_scale = (
+            icon_center_scale if icon_center_scale and icon_center_scale > 0 else 1.0
+        )
+        self.connected = connected
         self.base_icon_width = self._get_width_for_height(self.icon_height)
-        self.icon_image = self._get_scaled_icon(self.icon_height, self.icon_center_scale)
-        self.icon_width = self.base_icon_width if self.base_icon_width else (self.icon_image.width if self.icon_image else 18)
+        self.icon_image = self._get_scaled_icon(
+            self.icon_height,
+            self.icon_center_scale,
+            self.connected,
+        )
+        self.icon_width = (
+            self.base_icon_width
+            if self.base_icon_width
+            else (self.icon_image.width if self.icon_image else 18)
+        )
 
     def measure(self):
         return (self.icon_width, self.icon_height)
@@ -53,8 +69,8 @@ class NetworkStatusIcon:
         return max(1, int(round(src_width * target_height / src_height)))
 
     @classmethod
-    def _get_scaled_icon(cls, target_height, center_scale):
-        cache_key = (target_height, round(center_scale, 4))
+    def _get_scaled_icon(cls, target_height, center_scale, connected):
+        cache_key = (target_height, round(center_scale, 4), bool(connected))
         if cache_key in cls._scaled_icon_cache:
             return cls._scaled_icon_cache[cache_key]
 
@@ -71,5 +87,23 @@ class NetworkStatusIcon:
         scaled_height = max(1, int(round(target_height * center_scale)))
         scaled_width = max(1, int(round(src_width * scaled_height / src_height)))
         resized_icon = icon_image.resize((scaled_width, scaled_height), Image.LANCZOS)
-        cls._scaled_icon_cache[cache_key] = resized_icon
-        return resized_icon
+
+        if connected:
+            cls._scaled_icon_cache[cache_key] = resized_icon
+            return resized_icon
+
+        disconnected_icon = resized_icon.copy()
+        overlay = ImageDraw.Draw(disconnected_icon)
+        slash_width = max(2, int(round(disconnected_icon.height / 6)))
+        overlay.line(
+            (
+                1,
+                disconnected_icon.height - 2,
+                disconnected_icon.width - 2,
+                1,
+            ),
+            fill=(255, 85, 85, 255),
+            width=slash_width,
+        )
+        cls._scaled_icon_cache[cache_key] = disconnected_icon
+        return disconnected_icon

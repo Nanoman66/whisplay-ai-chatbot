@@ -26,6 +26,8 @@ import { settingsStore, AWAKE_BRIGHTNESS_OPTIONS } from "./settingsStore";
 import type { AppSettings } from "./settingsStore";
 import { spawn, spawnSync } from "child_process";
 
+const NMCLI_PATH = "/usr/bin/nmcli";
+
 dotEnv.config();
 
 class ChatFlow implements ChatFlowContext {
@@ -736,10 +738,24 @@ class ChatFlow implements ChatFlowContext {
 
   getWifiPowerLabel = (): string => {
     try {
-      const result = spawnSync("nmcli", ["radio", "wifi"], {
+      const result = spawnSync(NMCLI_PATH, ["radio", "wifi"], {
         encoding: "utf-8",
-        timeout: 1000,
+        timeout: 1500,
       });
+
+      if (result.error) {
+        console.error("[Settings] nmcli error:", result.error);
+        return "Wi-Fi: Unknown";
+      }
+
+      if (typeof result.status === "number" && result.status !== 0) {
+        console.error(
+          "[Settings] nmcli returned non-zero status:",
+          result.status,
+          result.stderr,
+        );
+        return "Wi-Fi: Unknown";
+      }
 
       const state = (result.stdout || "").trim().toLowerCase();
 
@@ -750,6 +766,8 @@ class ChatFlow implements ChatFlowContext {
       if (state === "enabled") {
         return "Wi-Fi: On";
       }
+
+      console.error("[Settings] unexpected nmcli output:", result.stdout, result.stderr);
     } catch (error) {
       console.error("[Settings] failed to read Wi-Fi state:", error);
     }
@@ -775,7 +793,7 @@ class ChatFlow implements ChatFlowContext {
     setTimeout(() => {
       try {
         const child = spawn(
-          "sudo",
+          "/usr/bin/sudo",
           ["/usr/local/bin/aimeshypi-wifi-toggle"],
           {
             detached: true,

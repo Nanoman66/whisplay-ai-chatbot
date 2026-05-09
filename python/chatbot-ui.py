@@ -916,8 +916,13 @@ class RenderThread(threading.Thread):
 
         if battery_level is not None:
             icons.append(BatteryStatusIcon(battery_level, battery_color, battery_font, status_font_size))
-        if context.get("network_connected"):
-            icons.append(NetworkStatusIcon(status_font_size))
+
+        network_state = context.get("network_connected")
+        if network_state is True or network_state == "connected":
+            icons.append(NetworkStatusIcon(status_font_size, connected=True))
+        elif network_state == "disconnected":
+            icons.append(NetworkStatusIcon(status_font_size, connected=False))
+
         if context.get("vpn_connected"):
             icons.append(WireguardStatusIcon(status_font_size))
         if context.get("image_icon_visible"):

@@ -50,10 +50,64 @@ const intervalCheckNetwork = () => {
   }, 10000);
 };
 
-if (isMeshtasticMode) {
-  display({
-    network_connected: false,
+const getMeshtasticWifiState = (): Promise<"off" | "disconnected" | "connected"> => {
+  return new Promise((resolve) => {
+    exec("/usr/bin/nmcli radio wifi", (radioErr, radioStdout) => {
+      const radioState = (radioStdout || "").trim().toLowerCase();
+
+      if (radioErr || radioState === "disabled") {
+        resolve("off");
+        return;
+      }
+
+      exec("/usr/bin/nmcli -t -f DEVICE,TYPE,STATE device status", (devErr, devStdout) => {
+        if (devErr || !devStdout) {
+          resolve("disconnected");
+          return;
+        }
+
+        const wifiLines = devStdout
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)
+          .filter((line) => {
+            const parts = line.split(":");
+            return parts.length >= 3 && parts[1] === "wifi";
+          });
+
+        if (!wifiLines.length) {
+          resolve("disconnected");
+          return;
+        }
+
+        const connected = wifiLines.some((line) => {
+          const parts = line.split(":");
+          const state = parts.slice(2).join(":").toLowerCase();
+          return state.startsWith("connected");
+        });
+
+        resolve(connected ? "connected" : "disconnected");
+      });
+    });
   });
+};
+
+const intervalCheckMeshtasticWifi = () => {
+  const pushWifiState = async () => {
+    const wifiState = await getMeshtasticWifiState();
+    display({
+      network_connected: wifiState,
+    });
+  };
+
+  void pushWifiState();
+  setInterval(() => {
+    void pushWifiState();
+  }, 10000);
+};
+
+if (isMeshtasticMode) {
+  intervalCheckMeshtasticWifi();
 } else {
   intervalCheckNetwork();
 }

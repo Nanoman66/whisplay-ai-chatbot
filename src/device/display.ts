@@ -44,7 +44,7 @@ export interface Status {
   camera_mode: boolean;
   camera_capture?: boolean;
   capture_image_path: string;
-  network_connected: boolean;
+  network_connected: boolean | "off" | "disconnected" | "connected";
   vpn_connected: boolean;
   rag_icon_visible: boolean;
   image_icon_visible: boolean;
