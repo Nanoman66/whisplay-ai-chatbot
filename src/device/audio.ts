@@ -264,6 +264,74 @@ export const playIncomingMessageChime = async (): Promise<void> => {
   });
 };
 
+export const playIncomingMessageSoundPreview = async (): Promise<void> => {
+  const currentSettings = settingsStore.getSettings();
+  const selectedSound = getIncomingMessageSoundById(
+    currentSettings.incomingMessageSoundId,
+  );
+
+  const playedSelectedSound = await tryPlayConfiguredSoundFile(
+    selectedSound.file,
+    1000,
+  );
+
+  if (playedSelectedSound) {
+    return;
+  }
+
+  const playedConfiguredSound = await tryPlayConfiguredSoundFile(
+    deviceBehaviorDefaults.sounds.incomingMessageSoundFile,
+    1000,
+  );
+
+  if (playedConfiguredSound) {
+    return;
+  }
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const done = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      resolve();
+    };
+
+    const chimeProcess = spawn("sox", [
+      "-n",
+      "-t",
+      "alsa",
+      alsaOutputDevice,
+      "synth",
+      "0.08",
+      "sine",
+      "880",
+      "vol",
+      "0.35",
+      ":",
+      "synth",
+      "0.10",
+      "sine",
+      "1175",
+      "vol",
+      "0.28",
+      "fade",
+      "q",
+      "0.01",
+      "0.18",
+      "0.04",
+      "gain",
+      "-20",
+    ]);
+
+    chimeProcess.on("error", done);
+    chimeProcess.on("exit", done);
+
+    setTimeout(done, 1000);
+  });
+};
+
 const recordAudio = async (
   outputPath: string,
   duration: number = 10,
@@ -601,4 +669,5 @@ export {
   stopPlaying,
   releaseAudioPlayer,
   restoreAudioPlayer,
+  playIncomingMessageSoundPreview,
 };

@@ -15,6 +15,7 @@ import {
   recordAudioManually,
   recordFileFormat,
   getDynamicVoiceDetectLevel,
+  playIncomingMessageSoundPreview,
 } from "../../device/audio";
 import { chatWithLLMStream } from "../../cloud-api/server";
 import { isImMode } from "../../cloud-api/llm";
@@ -554,8 +555,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
       if (tapCount === 2) {
         resetTapState();
+
+        const shouldPreviewSelectedSound = ctx.currentSoundsMenuIndex === 1;
+
         ctx.adjustSelectedSoundSetting();
         renderSoundsScreen();
+
+        if (shouldPreviewSelectedSound) {
+          void playIncomingMessageSoundPreview();
+        }
       }
     });
 
