@@ -1,10 +1,15 @@
 import fs from "fs";
 import path from "path";
+import {
+  DEFAULT_INCOMING_MESSAGE_SOUND_ID,
+  INCOMING_MESSAGE_SOUNDS,
+} from "../config/incomingMessageSounds";
 
 export const AWAKE_BRIGHTNESS_OPTIONS = [20, 35, 50, 75, 100] as const;
 
 export type AppSettings = {
   soundEnabled: boolean;
+  incomingMessageSoundId: string;
   awakeBrightness: number;
   dormantTimeoutSeconds: number;
   incomingWakeSeconds: number;
@@ -12,6 +17,7 @@ export type AppSettings = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   soundEnabled: true,
+  incomingMessageSoundId: DEFAULT_INCOMING_MESSAGE_SOUND_ID,
   awakeBrightness: 75,
   dormantTimeoutSeconds: 45,
   incomingWakeSeconds: 6,
@@ -51,11 +57,23 @@ function normalizeBrightness(value: unknown): number {
 }
 
 function normalizeSettings(input?: PersistedSettingsFile | null): AppSettings {
+  const requestedSoundId =
+    typeof input?.incomingMessageSoundId === "string"
+      ? input.incomingMessageSoundId
+      : DEFAULT_SETTINGS.incomingMessageSoundId;
+
+  const validatedSoundId = INCOMING_MESSAGE_SOUNDS.some(
+    (item) => item.id === requestedSoundId,
+  )
+    ? requestedSoundId
+    : DEFAULT_SETTINGS.incomingMessageSoundId;
+
   return {
     soundEnabled:
       typeof input?.soundEnabled === "boolean"
         ? input.soundEnabled
         : DEFAULT_SETTINGS.soundEnabled,
+    incomingMessageSoundId: validatedSoundId,
     awakeBrightness: normalizeBrightness(input?.awakeBrightness),
     dormantTimeoutSeconds: clampNumber(
       input?.dormantTimeoutSeconds,

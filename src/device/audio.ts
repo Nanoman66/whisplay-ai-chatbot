@@ -9,6 +9,8 @@ import type { ASRPlugin, TTSPlugin, AudioFormat } from "../plugin";
 import { ASRServer, TTSResult, TTSServer } from "../type";
 import { webAudioBridge } from "./web-audio-bridge";
 import { deviceBehaviorDefaults } from "../config/deviceBehaviorDefaults";
+import { settingsStore } from "../core/settingsStore";
+import { getIncomingMessageSoundById } from "../config/incomingMessageSounds";
 
 export { getDynamicVoiceDetectLevel } from "./voice-detect";
 
@@ -190,6 +192,25 @@ export const playWakeupChime = async (): Promise<void> => {
 };
 
 export const playIncomingMessageChime = async (): Promise<void> => {
+  const currentSettings = settingsStore.getSettings();
+
+  if (!currentSettings.soundEnabled) {
+    return;
+  }
+
+  const selectedSound = getIncomingMessageSoundById(
+    currentSettings.incomingMessageSoundId,
+  );
+
+  const playedSelectedSound = await tryPlayConfiguredSoundFile(
+    selectedSound.file,
+    1000,
+  );
+
+  if (playedSelectedSound) {
+    return;
+  }
+
   const playedConfiguredSound = await tryPlayConfiguredSoundFile(
     deviceBehaviorDefaults.sounds.incomingMessageSoundFile,
     1000,

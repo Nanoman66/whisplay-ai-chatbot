@@ -466,6 +466,101 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     renderSettingsScreen();
   },
+  
+    sounds_menu: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let longPressHandled = false;
+    let tapCount = 0;
+    let tapTimer: NodeJS.Timeout | null = null;
+
+    const resetTapState = () => {
+      tapCount = 0;
+      if (tapTimer) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
+      }
+    };
+
+    const renderSoundsScreen = () => {
+      const bodyText = ctx.getSoundsMenuText();
+
+      display({
+        status: "sounds",
+        emoji: "🔔",
+        RGB: "#3355aa",
+        brightness: ctx.getAwakeBrightness(),
+        header_text: "Sounds",
+        header_color: "#00c8a3",
+        body_text: bodyText,
+        body_color: "#FFFFFF",
+        footer_text: buildFooterLegend({
+          single: "next",
+          double: "change",
+          long: "back",
+        }),
+        footer_color: FOOTER_LEGEND_COLOR,
+        body_frame_visible: true,
+        body_frame_color: "#444444",
+        text: bodyText,
+      });
+    };
+
+    onButtonDoubleClick(null);
+
+    onButtonPressed(() => {
+      ctx.recordUserInteraction();
+      longPressHandled = false;
+
+      longPressTimer = setTimeout(() => {
+        if (!isButtonDown()) {
+          return;
+        }
+
+        longPressHandled = true;
+        resetTapState();
+        ctx.armIgnoreNextRelease();
+        ctx.transitionTo("settings_menu");
+      }, 900);
+    });
+
+    onButtonReleased(() => {
+      if (ctx.consumeIgnoredRelease()) {
+        return;
+      }
+
+      ctx.recordUserInteraction();
+
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      if (longPressHandled) {
+        return;
+      }
+
+      tapCount += 1;
+
+      if (tapCount === 1) {
+        tapTimer = setTimeout(() => {
+          if (tapCount === 1) {
+            ctx.cycleSoundsMenuSelection();
+            renderSoundsScreen();
+          }
+          resetTapState();
+        }, 450);
+        return;
+      }
+
+      if (tapCount === 2) {
+        resetTapState();
+        ctx.adjustSelectedSoundSetting();
+        renderSoundsScreen();
+      }
+    });
+
+    renderSoundsScreen();
+  },
 
   confirm_reboot: (ctx: ChatFlowContext) => {
     let tapCount = 0;

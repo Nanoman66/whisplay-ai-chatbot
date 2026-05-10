@@ -6,6 +6,7 @@ export type FlowName =
   | "sleep"
   | "dormant"
   | "settings_menu"
+  | "sounds_menu"
   | "confirm_reboot"
   | "camera"
   | "music"
@@ -82,6 +83,7 @@ export interface ChatFlowContext {
   lastUserInteractionAt: number;
   incomingWakeDeadlineAt: number;
   currentSettingsMenuIndex: number;
+  currentSoundsMenuIndex: number;
 
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
@@ -128,5 +130,10 @@ export interface ChatFlowContext {
   getSettingsMenuText: () => string;
   cycleSettingsMenuSelection: () => void;
   adjustSelectedSetting: () => void;
+
+  getSoundsMenuText: () => string;
+  cycleSoundsMenuSelection: () => void;
+  adjustSelectedSoundSetting: () => void;
+
   requestSystemReboot: () => void;
 }

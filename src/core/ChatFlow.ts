@@ -24,6 +24,10 @@ import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
 import { settingsStore, AWAKE_BRIGHTNESS_OPTIONS } from "./settingsStore";
 import type { AppSettings } from "./settingsStore";
+import {
+  getIncomingMessageSoundById,
+  INCOMING_MESSAGE_SOUNDS,
+} from "../config/incomingMessageSounds";
 import { spawn, spawnSync } from "child_process";
 
 const NMCLI_PATH = "/usr/bin/nmcli";
@@ -75,6 +79,7 @@ class ChatFlow implements ChatFlowContext {
   lastUserInteractionAt: number = Date.now();
   incomingWakeDeadlineAt: number = 0;
   currentSettingsMenuIndex: number = 0;
+  currentSoundsMenuIndex: number = 0;
   private dormantTimer: NodeJS.Timeout | null = null;
   private incomingWakeTimer: NodeJS.Timeout | null = null;
   private autoReturnToDormant = false;
@@ -715,7 +720,7 @@ class ChatFlow implements ChatFlowContext {
 
   getSettingsMenuText = (): string => {
     const lines = [
-      `Sound: ${this.settings.soundEnabled ? "On" : "Off"}`,
+      `Sounds >`,
       `Brightness: ${this.settings.awakeBrightness}%`,
       `Dormant timeout: ${this.settings.dormantTimeoutSeconds}s`,
       `Incoming wake: ${this.settings.incomingWakeSeconds}s`,
@@ -840,9 +845,8 @@ class ChatFlow implements ChatFlowContext {
     const incomingWakeOptions = [3, 5, 6, 8, 10];
 
     if (this.currentSettingsMenuIndex === 0) {
-      this.settings = settingsStore.updateSettings({
-        soundEnabled: !this.settings.soundEnabled,
-      });
+      this.currentSoundsMenuIndex = 0;
+      this.transitionTo("sounds_menu");
       return;
     }
 
@@ -894,6 +898,53 @@ class ChatFlow implements ChatFlowContext {
     if (this.currentSettingsMenuIndex === 5) {
       this.transitionTo("confirm_reboot");
       return;
+    }
+  };
+  
+  getSoundsMenuText = (): string => {
+    const selectedSound = getIncomingMessageSoundById(
+      this.settings.incomingMessageSoundId,
+    );
+
+    const lines = [
+      `Message sounds: ${this.settings.soundEnabled ? "On" : "Off"}`,
+      `Message received: ${selectedSound.label}`,
+    ];
+
+    return lines
+      .map((line, index) =>
+        `${index === this.currentSoundsMenuIndex ? "›" : " "} ${line}`,
+      )
+      .join("\n");
+  };
+
+  cycleSoundsMenuSelection = (): void => {
+    const menuLength = 2;
+    this.currentSoundsMenuIndex =
+      (this.currentSoundsMenuIndex + 1) % menuLength;
+  };
+
+  adjustSelectedSoundSetting = (): void => {
+    if (this.currentSoundsMenuIndex === 0) {
+      this.settings = settingsStore.updateSettings({
+        soundEnabled: !this.settings.soundEnabled,
+      });
+      return;
+    }
+
+    if (this.currentSoundsMenuIndex === 1) {
+      const currentIndex = INCOMING_MESSAGE_SOUNDS.findIndex(
+        (item) => item.id === this.settings.incomingMessageSoundId,
+      );
+
+      const nextIndex =
+        currentIndex >= 0
+          ? (currentIndex + 1) % INCOMING_MESSAGE_SOUNDS.length
+          : 0;
+
+      this.settings = settingsStore.updateSettings({
+        incomingMessageSoundId: INCOMING_MESSAGE_SOUNDS[nextIndex].id,
+      });
     }
   };
 
