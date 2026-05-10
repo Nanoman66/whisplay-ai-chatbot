@@ -264,7 +264,7 @@ export const playIncomingMessageChime = async (): Promise<void> => {
   });
 };
 
-export const playIncomingMessageSoundPreview = async (): Promise<void> => {
+const playIncomingMessageSoundPreview = async (): Promise<void> => {
   const currentSettings = settingsStore.getSettings();
   const selectedSound = getIncomingMessageSoundById(
     currentSettings.incomingMessageSoundId,
