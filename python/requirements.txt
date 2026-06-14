@@ -2,6 +2,7 @@ Pillow
 cairosvg
 numpy
 spidev
+RPi.GPIO
 opencv-python-headless
 Flask
 meshtastic
