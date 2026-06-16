@@ -154,6 +154,7 @@ class WhisplayBoard:
     # LCD parameters
     LCD_WIDTH = 240
     LCD_HEIGHT = 280
+    BUTTON_POLL_INTERVAL_SEC = 0.005
     CornerHeight = 20  # Rounded corner height in pixels
 
     # Physical pin definitions (BOARD mode - shared by both platforms)
@@ -184,6 +185,8 @@ class WhisplayBoard:
         self._led_lock = threading.Lock()
         self.button_press_callback = None
         self.button_release_callback = None
+        self._btn_thread_running = False
+        self._btn_thread = None
 
         if self.platform == "rpi":
             self._init_rpi()
@@ -223,9 +226,12 @@ class WhisplayBoard:
         # The WhisPlay HAT has an external pull-down resistor on the button line.
         # Button pressed = HIGH, released = LOW. No internal pull needed.
         GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_OFF)
-        GPIO.add_event_detect(
-            self.BUTTON_PIN, GPIO.BOTH, callback=self._button_event_rpi, bouncetime=50
-        )
+
+        # Poll button state instead of using edge interrupts because
+        # GPIO.add_event_detect() is unreliable on this appliance image.
+        self._btn_thread_running = True
+        self._btn_thread = threading.Thread(target=self._button_monitor_rpi, daemon=True)
+        self._btn_thread.start()
 
         # Initialize SPI
         self.spi = spidev.SpiDev()
@@ -376,6 +382,26 @@ class WhisplayBoard:
             self.spi.open(3, 0)  # SPI3, CS0 (RK3566 Radxa Zero 3W)
             self.spi.max_speed_hz = 48_000_000  # RK3566 SPI max 50MHz
         self.spi.mode = 0b00
+
+    def _button_monitor_rpi(self):
+        """Button state polling thread for Raspberry Pi platform.
+        Reads GPIO input directly to avoid unreliable edge-detect behavior.
+        HIGH (1) = pressed, LOW (0) = released.
+        """
+        last_state = GPIO.input(self.BUTTON_PIN)
+        while self._btn_thread_running:
+            try:
+                state = GPIO.input(self.BUTTON_PIN)
+                if state != last_state:
+                    last_state = state
+                    if state == GPIO.HIGH:
+                        self._button_press_event(self.BUTTON_PIN)
+                    else:
+                        self._button_release_event(self.BUTTON_PIN)
+            except Exception:
+                if self._btn_thread_running:
+                    pass
+            time.sleep(self.BUTTON_POLL_INTERVAL_SEC)
 
     def _button_monitor_radxa(self):
         """Button state polling thread for Radxa platform.
@@ -770,6 +796,9 @@ class WhisplayBoard:
         self.blue_pwm.stop()
 
         if self.platform == "rpi":
+            self._btn_thread_running = False
+            if hasattr(self, '_btn_thread') and self._btn_thread:
+                self._btn_thread.join(timeout=2)
             GPIO.cleanup()
         elif self.platform == "radxa":
             # Stop button listener thread
