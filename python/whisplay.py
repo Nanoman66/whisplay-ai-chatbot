@@ -3,6 +3,50 @@ import time
 import os
 import threading
 
+try:
+    import gpiod
+    _GPIOD_AVAILABLE = True
+    _GPIOD_V2 = hasattr(gpiod, 'LineSettings')
+    if _GPIOD_V2:
+        from gpiod.line import Direction, Value, Bias
+except ImportError:
+    gpiod = None
+    _GPIOD_AVAILABLE = False
+    _GPIOD_V2 = False
+
+
+class _InputLineHandle:
+    """Small cross-version GPIO input wrapper for polling a line value."""
+
+    def __init__(self, chip=None, request=None, offset=None, line=None):
+        self._chip = chip
+        self._request = request
+        self._offset = offset
+        self._line = line
+
+    def get_value(self):
+        if self._request is not None:
+            value = self._request.get_value(self._offset)
+            return 1 if value == Value.ACTIVE else 0
+        return int(self._line.get_value())
+
+    def release(self):
+        try:
+            if self._request is not None:
+                self._request.release()
+        except Exception:
+            pass
+        try:
+            if self._line is not None:
+                self._line.release()
+        except Exception:
+            pass
+        try:
+            if self._chip is not None:
+                self._chip.close()
+        except Exception:
+            pass
+
 
 # ==================== Platform Detection ====================
 def _detect_platform():
@@ -154,7 +198,7 @@ class WhisplayBoard:
     # LCD parameters
     LCD_WIDTH = 240
     LCD_HEIGHT = 280
-    BUTTON_POLL_INTERVAL_SEC = 0.005
+    BUTTON_POLL_INTERVAL_SEC = 0.01
     CornerHeight = 20  # Rounded corner height in pixels
 
     # Physical pin definitions (BOARD mode - shared by both platforms)
@@ -187,6 +231,7 @@ class WhisplayBoard:
         self.button_release_callback = None
         self._btn_thread_running = False
         self._btn_thread = None
+        self._rpi_button_line = None
 
         if self.platform == "rpi":
             self._init_rpi()
@@ -226,6 +271,43 @@ class WhisplayBoard:
         # The WhisPlay HAT has an external pull-down resistor on the button line.
         # Button pressed = HIGH, released = LOW. No internal pull needed.
         GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_OFF)
+
+        if _GPIOD_AVAILABLE:
+            try:
+                chip = gpiod.Chip('gpiochip0')
+                if _GPIOD_V2:
+                    try:
+                        settings = gpiod.LineSettings(
+                            direction=Direction.INPUT,
+                            bias=Bias.DISABLED,
+                        )
+                    except Exception:
+                        settings = gpiod.LineSettings(direction=Direction.INPUT)
+                    request = chip.request_lines(
+                        consumer='whisplay-btn',
+                        config={17: settings},
+                    )
+                    self._rpi_button_line = _InputLineHandle(
+                        chip=chip,
+                        request=request,
+                        offset=17,
+                    )
+                else:
+                    line = chip.get_line(17)
+                    try:
+                        line.request(
+                            consumer='whisplay-btn',
+                            type=gpiod.LINE_REQ_DIR_IN,
+                            flags=gpiod.LINE_REQ_FLAG_BIAS_DISABLE,
+                        )
+                    except Exception:
+                        line.request(
+                            consumer='whisplay-btn',
+                            type=gpiod.LINE_REQ_DIR_IN,
+                        )
+                    self._rpi_button_line = _InputLineHandle(chip=chip, line=line)
+            except Exception:
+                self._rpi_button_line = None
 
         # Poll button state instead of using edge interrupts because
         # GPIO.add_event_detect() is unreliable on this appliance image.
@@ -385,16 +467,18 @@ class WhisplayBoard:
 
     def _button_monitor_rpi(self):
         """Button state polling thread for Raspberry Pi platform.
-        Reads GPIO input directly to avoid unreliable edge-detect behavior.
+        Reads button state via gpiod when available to match the official
+        Whisplay runtime, falling back to GPIO.input if gpiod is unavailable.
         HIGH (1) = pressed, LOW (0) = released.
         """
-        last_state = GPIO.input(self.BUTTON_PIN)
+        reader = self._rpi_button_line.get_value if self._rpi_button_line else lambda: GPIO.input(self.BUTTON_PIN)
+        last_state = reader()
         while self._btn_thread_running:
             try:
-                state = GPIO.input(self.BUTTON_PIN)
+                state = reader()
                 if state != last_state:
                     last_state = state
-                    if state == GPIO.HIGH:
+                    if state == 1:
                         self._button_press_event(self.BUTTON_PIN)
                     else:
                         self._button_release_event(self.BUTTON_PIN)
@@ -799,6 +883,9 @@ class WhisplayBoard:
             self._btn_thread_running = False
             if hasattr(self, '_btn_thread') and self._btn_thread:
                 self._btn_thread.join(timeout=2)
+            if self._rpi_button_line is not None:
+                self._rpi_button_line.release()
+                self._rpi_button_line = None
             GPIO.cleanup()
         elif self.platform == "radxa":
             # Stop button listener thread
