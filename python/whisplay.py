@@ -269,8 +269,9 @@ class WhisplayBoard:
         self.blue_pwm.start(0)
 
         # Initialize button
-        # The WhisPlay HAT has an external pull-down resistor on the button line.
-        # Button pressed = HIGH, released = LOW. No internal pull needed.
+        # Button pressed = HIGH, released = LOW.
+        # On this appliance image the line is unstable with bias disabled,
+        # so prefer an explicit pull-down bias on Raspberry Pi.
         if _GPIOD_AVAILABLE:
             try:
                 chip = gpiod.Chip('gpiochip0')
@@ -278,7 +279,7 @@ class WhisplayBoard:
                     try:
                         settings = gpiod.LineSettings(
                             direction=Direction.INPUT,
-                            bias=Bias.DISABLED,
+                            bias=Bias.PULL_DOWN,
                         )
                     except Exception:
                         settings = gpiod.LineSettings(direction=Direction.INPUT)
@@ -297,7 +298,7 @@ class WhisplayBoard:
                         line.request(
                             consumer='whisplay-btn',
                             type=gpiod.LINE_REQ_DIR_IN,
-                            flags=gpiod.LINE_REQ_FLAG_BIAS_DISABLE,
+                            flags=gpiod.LINE_REQ_FLAG_BIAS_PULL_DOWN,
                         )
                     except Exception:
                         line.request(
@@ -309,7 +310,7 @@ class WhisplayBoard:
                 self._rpi_button_line = None
 
         if self._rpi_button_line is None:
-            GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_OFF)
+            GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
         # Poll button state instead of using edge interrupts because
         # GPIO.add_event_detect() is unreliable on this appliance image.
