@@ -199,6 +199,7 @@ class WhisplayBoard:
     LCD_WIDTH = 240
     LCD_HEIGHT = 280
     BUTTON_POLL_INTERVAL_SEC = 0.01
+    BUTTON_DEBOUNCE_STABLE_READS = 3
     CornerHeight = 20  # Rounded corner height in pixels
 
     # Physical pin definitions (BOARD mode - shared by both platforms)
@@ -270,8 +271,6 @@ class WhisplayBoard:
         # Initialize button
         # The WhisPlay HAT has an external pull-down resistor on the button line.
         # Button pressed = HIGH, released = LOW. No internal pull needed.
-        GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_OFF)
-
         if _GPIOD_AVAILABLE:
             try:
                 chip = gpiod.Chip('gpiochip0')
@@ -308,6 +307,9 @@ class WhisplayBoard:
                     self._rpi_button_line = _InputLineHandle(chip=chip, line=line)
             except Exception:
                 self._rpi_button_line = None
+
+        if self._rpi_button_line is None:
+            GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_OFF)
 
         # Poll button state instead of using edge interrupts because
         # GPIO.add_event_detect() is unreliable on this appliance image.
@@ -472,16 +474,27 @@ class WhisplayBoard:
         HIGH (1) = pressed, LOW (0) = released.
         """
         reader = self._rpi_button_line.get_value if self._rpi_button_line else lambda: GPIO.input(self.BUTTON_PIN)
-        last_state = reader()
+        stable_state = reader()
+        candidate_state = stable_state
+        candidate_reads = 0
         while self._btn_thread_running:
             try:
                 state = reader()
-                if state != last_state:
-                    last_state = state
-                    if state == 1:
-                        self._button_press_event(self.BUTTON_PIN)
-                    else:
-                        self._button_release_event(self.BUTTON_PIN)
+                if state == stable_state:
+                    candidate_state = stable_state
+                    candidate_reads = 0
+                elif state != candidate_state:
+                    candidate_state = state
+                    candidate_reads = 1
+                else:
+                    candidate_reads += 1
+                    if candidate_reads >= self.BUTTON_DEBOUNCE_STABLE_READS:
+                        stable_state = candidate_state
+                        candidate_reads = 0
+                        if stable_state == 1:
+                            self._button_press_event(self.BUTTON_PIN)
+                        else:
+                            self._button_release_event(self.BUTTON_PIN)
             except Exception:
                 if self._btn_thread_running:
                     pass
@@ -524,6 +537,8 @@ class WhisplayBoard:
     def _gpio_input(self, pin):
         """Read GPIO pin input value"""
         if self.platform == "rpi":
+            if pin == self.BUTTON_PIN and self._rpi_button_line is not None:
+                return self._rpi_button_line.get_value()
             return GPIO.input(pin)
         elif self.platform == "radxa":
             return self._gpio_lines[pin].get_value()
